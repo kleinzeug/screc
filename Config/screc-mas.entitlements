@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac App Store build (Stage 3). Wire via CODE_SIGN_ENTITLEMENTS in an
+	     AppStore build configuration. No temporary exceptions — /tmp is not
+	     reachable from the sandbox; the MAS build uses container tmp with its
+	     own reboot-aware purge instead. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<!-- Microphone capture (optional feature; also needs
+	     NSMicrophoneUsageDescription in Info.plist). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

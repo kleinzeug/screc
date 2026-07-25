@@ -1,0 +1,58 @@
+name: screc
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: 0.2.0
+    CURRENT_PROJECT_VERSION: 1
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.0.0
+targets:
+  screc:
+    type: application
+    platform: macOS
+    sources:
+      - path: screc
+    dependencies:
+      - package: KeyboardShortcuts
+    scheme: {}
+    postBuildScripts:
+      - name: Stamp git version
+        basedOnDependencyAnalysis: false
+        script: |
+          version=$(git -C "$SRCROOT" describe --tags --always --dirty 2>/dev/null || echo "$MARKETING_VERSION")
+          version=${version#v}
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          if [ -f "$plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
+          fi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.holzschneider.screc
+        PRODUCT_NAME: screc
+        GENERATE_INFOPLIST_FILE: YES
+        # Display name carries the diacritic; bundle/product name stays ASCII
+        # (diacritics in product names break signing/upload tooling).
+        INFOPLIST_KEY_CFBundleDisplayName: sčrec
+        # Menu-bar-only app: no Dock icon, no app menu.
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements
+        CODE_SIGN_STYLE: Automatic
+        # Ad-hoc signing so the project builds without an Apple ID configured.
+        # IMPORTANT: macOS ties the screen-recording permission to the signing
+        # identity — ad-hoc builds re-prompt after every rebuild and Sequoia is
+        # unreliable granting ScreenCaptureKit access to them. Once signed into
+        # Xcode (Settings → Accounts, free Apple ID suffices):
+        #   1. delete the CODE_SIGN_IDENTITY line below
+        #   2. set DEVELOPMENT_TEAM to your team ID
+        CODE_SIGN_IDENTITY: "-"
+        # DEVELOPMENT_TEAM: XXXXXXXXXX
+        # The version-stamp script needs to write into the bundle and call git.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
