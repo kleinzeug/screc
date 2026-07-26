@@ -43,6 +43,7 @@ targets:
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements
         CODE_SIGN_STYLE: Automatic
         # Ad-hoc signing so the project builds without an Apple ID configured.

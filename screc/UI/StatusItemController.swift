@@ -113,23 +113,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private enum Icons {
-        /// Operational: ring + red center dot. Recording: ring + monochrome
-        /// stop square inside the same ring, so start/stop reads as one
-        /// control. Custom-drawn (a template image can't mix an adaptive ring
-        /// with a fixed red dot); dynamic colors resolve at draw time, so
-        /// light/dark menu bars work.
-        static let readyRedDot = ringIcon(center: .redDot)
+        /// Idle: the classic "● REC" badge (red dot only when operational;
+        /// hollow dot while the screen-recording permission is missing).
+        /// Recording: ring + monochrome stop square. Custom-drawn (a template
+        /// image can't mix an adaptive label color with a fixed red dot);
+        /// dynamic colors resolve at draw time, so light/dark menu bars work.
+        static let readyRedDot = recBadge(hollowDot: false)
+        static let recordNoPermission = recBadge(hollowDot: true)
         static let recordingStop = ringIcon(center: .stopSquare)
 
-        /// Permission missing: hollow, monochrome — "not set up yet".
-        static let recordNoPermission: NSImage = {
-            let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-            let image = NSImage(systemSymbolName: "record.circle",
-                                accessibilityDescription: "Record (permission needed)")!
-                .withSymbolConfiguration(config)!
-            image.isTemplate = true
+        private static func recBadge(hollowDot: Bool) -> NSImage {
+            let font = NSFont.systemFont(ofSize: 11, weight: .heavy)
+            let text = NSAttributedString(string: "REC", attributes: [
+                .font: font,
+                .foregroundColor: NSColor.labelColor,
+                .kern: 0.6,
+            ])
+            let textSize = text.size()
+            let dot: CGFloat = 8
+            let gap: CGFloat = 4
+            let size = NSSize(width: dot + gap + textSize.width.rounded(.up) + 2,
+                              height: 18)
+            let image = NSImage(size: size, flipped: false) { rect in
+                let dotRect = NSRect(x: 1, y: (rect.height - dot) / 2,
+                                     width: dot, height: dot)
+                if hollowDot {
+                    NSColor.labelColor.setStroke()
+                    let ring = NSBezierPath(ovalIn: dotRect.insetBy(dx: 0.75, dy: 0.75))
+                    ring.lineWidth = 1.5
+                    ring.stroke()
+                } else {
+                    NSColor.systemRed.setFill()
+                    NSBezierPath(ovalIn: dotRect).fill()
+                }
+                text.draw(at: NSPoint(x: 1 + dot + gap,
+                                      y: (rect.height - textSize.height) / 2))
+                return true
+            }
+            image.isTemplate = false
             return image
-        }()
+        }
 
         static let saving: NSImage = {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
@@ -149,7 +172,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return image
         }()
 
-        private enum CenterGlyph { case redDot, stopSquare }
+        private enum CenterGlyph { case stopSquare }
 
         private static func ringIcon(center glyph: CenterGlyph) -> NSImage {
             let image = NSImage(size: NSSize(width: 18, height: 18),
@@ -159,9 +182,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 NSColor.labelColor.setStroke()
                 ring.stroke()
                 switch glyph {
-                case .redDot:
-                    NSColor.systemRed.setFill()
-                    NSBezierPath(ovalIn: rect.insetBy(dx: 5.25, dy: 5.25)).fill()
                 case .stopSquare:
                     NSColor.labelColor.setFill()
                     NSBezierPath(roundedRect: rect.insetBy(dx: 5.75, dy: 5.75),

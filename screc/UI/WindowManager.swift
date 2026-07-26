@@ -27,8 +27,15 @@ final class WindowManager: NSObject, NSWindowDelegate {
                 UserDefaults.standard.set(true, forKey: DefaultsKey.hasCompletedOnboarding)
                 self?.onboardingWindow?.close()
             }
-            onboardingWindow = makeWindow(title: "Welcome to sčrec",
-                                          content: AnyView(root))
+            let window = makeWindow(title: "Welcome to sčrec",
+                                    content: AnyView(root))
+            // Modern translucent style: blur extends edge-to-edge with no
+            // titlebar divider; traffic lights float over the content.
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            onboardingWindow = window
         }
         present(onboardingWindow!)
         permissions.startPolling()

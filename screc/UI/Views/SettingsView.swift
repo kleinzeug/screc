@@ -96,12 +96,14 @@ struct SettingsView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "record.circle.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(.red)
             VStack(alignment: .leading, spacing: 2) {
-                Text("sčrec")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                HStack(alignment: .lastTextBaseline, spacing: 7) {
+                    Text("●")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.red)
+                    Text("sčrec")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                }
                 Text("One click in the menu bar → a small, share-ready recording.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -12,16 +12,21 @@ struct OnboardingView: View {
             footer
         }
         .padding(28)
+        .padding(.top, 8) // room for the floating traffic lights
         .frame(width: 460)
+        .background(VisualEffectBackground(material: .sidebar).ignoresSafeArea())
     }
 
     private var header: some View {
         VStack(spacing: 6) {
-            Image(systemName: "record.circle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.red)
-            Text("sčrec")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+            HStack(alignment: .lastTextBaseline, spacing: 10) {
+                Text("●")
+                    .font(.system(size: 26))
+                    .foregroundStyle(.red)
+                Text("sčrec")
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
             Text("One click in the menu bar → a small, share-ready recording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
