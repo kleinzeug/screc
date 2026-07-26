@@ -1,8 +1,9 @@
 import AppKit
 
-// Slices tools/icon-master.png (1024 full-bleed square) into the AppIcon set:
-// masked to the macOS icon-grid rounded square (82% of canvas, ~22% corner
-// radius), slightly zoomed so the window artwork fills the tile.
+// Slices tools/icon-master.png (square artwork with its own transparency)
+// into the AppIcon set: scaled to ~92% of the canvas so the window sits on
+// the macOS icon grid, no additional masking.
+// Usage: swift sliceicon.swift <master.png> <outDir>
 let master = NSBitmapImageRep(data: try! Data(contentsOf:
     URL(fileURLWithPath: CommandLine.arguments[1])))!
 let outDir = CommandLine.arguments[2]
@@ -15,13 +16,11 @@ func render(px: Int) -> NSBitmapImageRep {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)!
     let S = CGFloat(px)
-    let tile = S * 0.82
-    let tileRect = CGRect(x: (S - tile) / 2, y: (S - tile) / 2, width: tile, height: tile)
-    NSBezierPath(roundedRect: tileRect, xRadius: tile * 0.225, yRadius: tile * 0.225).addClip()
-    let zoom = tile * 1.18
-    let drawRect = CGRect(x: (S - zoom) / 2, y: (S - zoom) / 2, width: zoom, height: zoom)
-    master.draw(in: drawRect, from: .zero, operation: .sourceOver,
-                fraction: 1, respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high.rawValue])
+    let fit = S * 0.92
+    master.draw(in: CGRect(x: (S - fit) / 2, y: (S - fit) / 2, width: fit, height: fit),
+                from: .zero, operation: .sourceOver, fraction: 1,
+                respectFlipped: false,
+                hints: [.interpolation: NSImageInterpolation.high.rawValue])
     NSGraphicsContext.restoreGraphicsState()
     return rep
 }
