@@ -1,4 +1,4 @@
-# sčrec — Design & Implementation Plan
+# screc — Design & Implementation Plan
 
 *A one-click menu-bar screen recorder for macOS that produces small, share-ready
 MP4s (or GIFs) with zero post-processing.*
@@ -10,7 +10,7 @@ Researched and written 2026-07-24. Dev machine: macOS 15.7 (Sequoia), Xcode 26.3
 ## 1. Product definition
 
 The workflow being replaced: QuickTime record → crop → `ffmpeg` downscale/compress
-→ share → delete/archive. sčrec collapses it to:
+→ share → delete/archive. screc collapses it to:
 
 1. Click the red dot in the menu bar → recording of the frontmost window starts.
 2. (Or right-click → record full screen / drag-select a region → floating REC button.)
@@ -137,7 +137,7 @@ Output: Small MP4 ▸            (preset quick-switch: Small/Medium/HEVC/GIF)
 Clear All Recordings (frees 84 MB)
 ──────────────
 Settings…
-Quit sčrec
+Quit screc
 ```
 
 Recents rows: plain `NSMenuItem`s with a 16–20 px `item.image` thumbnail — no
@@ -154,7 +154,7 @@ dimmed with 30 % black and the dragged rect punched out via even-odd
 `CAShapeLayer`, crosshair cursor via tracking area. On mouse-up, a small
 floating panel with the REC button appears at the rect's corner.
 
-**Every sčrec window sets `sharingType = .none`** so it never appears in the
+**Every screc window sets `sharingType = .none`** so it never appears in the
 recording; the capture filter additionally excludes the app
 (`SCContentFilter(display:excludingApplications:exceptingWindows:)`) — belt and
 suspenders.
@@ -323,7 +323,7 @@ existing recording" retroactively):
   - *Quality upgrade:* the **gifski** library (cross-frame palettes, temporal
     dithering — the benchmark). **License: AGPL-3.0-or-later, or a paid
     commercial license** (gif.ski/license.html). Shipping it closed-source
-    requires buying the license; open-sourcing sčrec (AGPL-compatible) is the
+    requires buying the license; open-sourcing screc (AGPL-compatible) is the
     free path. Decision deferred; the encoder sits behind a `GIFEncoder`
     protocol so it's a drop-in later.
 
@@ -335,7 +335,7 @@ existing recording" retroactively):
   fixed presets, no bitrate control.
 - Spatial crop after the fact: `AVMutableVideoComposition` with `renderSize` +
   layer-instruction transform (region capture makes this rarely needed).
-- **GIF frame editing must live in sčrec**: research falsified the plan to hand
+- **GIF frame editing must live in screc**: research falsified the plan to hand
   GIFs to Preview for frame deletion — Preview can only *view* frames and export
   a single one; it cannot delete frames and re-save. A simple thumbnail-strip
   "drop frames / re-encode" sheet fed by the kept mp4 frames is the replacement
@@ -348,7 +348,7 @@ existing recording" retroactively):
   with `urlForApplication(withBundleIdentifier: "com.apple.QuickTimePlayerX")`
   (the trailing X is historical and correct); fall back to plain `open(url)`.
   Good news for the trim workflow: QuickTime **Trim + Save is lossless
-  passthrough** (no re-encode), so trimming sčrec's already-compressed file
+  passthrough** (no re-encode), so trimming screc's already-compressed file
   doesn't degrade it. "Export As" would re-encode — users should just Save.
 - GIF → Preview (`com.apple.Preview`) for viewing; frame editing in-app (§5.4).
 - "Reveal in Finder": `NSWorkspace.shared.activateFileViewerSelecting([url])`.
@@ -364,7 +364,7 @@ Screen recording is **pure TCC** (no entitlement exists). Key facts:
   after a denial only the user can flip the toggle in System Settings.
 - **A relaunch is required after granting** — the running process keeps the
   stale verdict (DTS-confirmed, all of 14/15/26). Onboarding flow:
-  request → poll preflight → offer "Relaunch sčrec" (spawn new instance via
+  request → poll preflight → offer "Relaunch screc" (spawn new instance via
   `open -n`, terminate).
 - Deep-link button (verified working on this machine, 15.7.4):
   `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
@@ -414,7 +414,7 @@ title before clicking.
 
 Bundle id fixed from day one (TCC grants and the MAS container key off it):
 `com.<yourdomain>.screc`, `PRODUCT_NAME`/`CFBundleName` ASCII **screc** (diacritics
-in bundle/product names break signing tooling), display name **sčrec** in
+in bundle/product names break signing tooling), display name **screc** in
 `CFBundleDisplayName` / App Store listing only. Two entitlement files from day
 one (`screc-dev.entitlements` without sandbox, `screc-mas.entitlements` with),
 wired per build configuration — forces sandbox-clean file handling into the
@@ -461,9 +461,19 @@ The string "screc" is crowded:
 - Diacritic display names are allowed on the App Store (30-char limit; search
   normalizes accents).
 
-Options: keep sčrec (accept adjacency, own the .app domain), or pick a more
+Options: keep screc (accept adjacency, own the .app domain), or pick a more
 distinctive name before public release. **Recommendation: keep it for Stages
 0–1; revisit before Developer ID release.**
+
+**DECIDED (2026-07-26): the name is screc.** The screc.app domain is
+registered to the author, which anchors the claim; the Android "ScRec"
+adjacency is accepted knowingly (different platform). Bundle id switched to
+`app.screc` while still pre-release (UserDefaults migrated); this is final.
+
+**DECIDED (2026-07-26): diacritic branding retired.** The "sčrec" stylization
+and the Shrek pronunciation joke are dropped for a sober, sleek identity:
+plain lowercase **screc** everywhere (UI, site, docs). The landing page lives
+in `docs/` (GitHub Pages layout) with a CNAME for screc.app.
 
 ### Pricing (from the survey, for later)
 Active quality-tier competitors cluster at **$15–30 one-time** (Gifox 14.99,
@@ -502,7 +512,7 @@ differentiate on convenience, not limits.
   (recording), custom-drawn so the ring adapts to the menu bar while the dot
   stays red.
 - **M2.6 — second feedback round** ✅ (2026-07-25): stronger passe-partout dim
-  (45 %), no border; splash/settings truly centered; "About sčrec…" menu item;
+  (45 %), no border; splash/settings truly centered; "About screc…" menu item;
   **click roles swapped** (left = menu, right = record/stop); fixed-width
   stats via figure-space padding; preset resolution confirmed as max-only
   (native size when smaller, never upscaled); new **"Record Specific
@@ -539,8 +549,16 @@ differentiate on convenience, not limits.
   in-app GIF frame-strip editor (⌥ recents entry → thumbnail grid, click to
   mark frames, atomic in-place rewrite preserving delays/loop — verified:
   36 → 18 frames round-trip). Version 0.2.0.
+- **M7 — public presentation** (pulled AHEAD of M5 by design: the decision to
+  pay for a developer account depends on the app presenting convincingly):
+  landing page (site/index.html — self-contained, brand colors sampled from
+  the icon, drawn menu-bar hero, live stats ticker, dual-theme), App Store
+  asset checklist (screenshots 2880×1800/2560×1600/1440×900/1280×800, 1024
+  icon ✅, description, keywords, privacy labels), and the identity decisions:
+  final app name (see §9 collisions), public author vs. team/label name,
+  domain (screc.app looked unregistered), support e-mail, pricing.
 - **M5 — Developer ID release**: notarization pipeline (CI or script), Sparkle,
-  landing page, name decision.
+  name decision.
 - **M6 — Mac App Store**: sandbox storage variant, bookmark-based custom
   folders, review prep (2.5.14 consent copy), TestFlight beta, listing
   (screenshots, ASO against the subscription-trap field).
@@ -548,7 +566,7 @@ differentiate on convenience, not limits.
 ## 11. Risks & open questions
 
 1. **GIF quality vs license**: ImageIO output on gradient-heavy content may
-   disappoint; gifski needs a commercial license or an AGPL sčrec. Defer behind
+   disappoint; gifski needs a commercial license or an AGPL screc. Defer behind
    `GIFEncoder` protocol; decide at M3 with real output samples.
 2. **Name collision** (§9) — decide before anything public.
 3. **Tahoe verification pass**: transparent 30 px menu bar rendering, the

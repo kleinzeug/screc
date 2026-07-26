@@ -1,8 +1,7 @@
-# sčrec
+# screc
 
 A one-click menu-bar screen recorder for macOS that produces small,
-share-ready MP4s (or GIFs) with zero post-processing. Pronounced — incorrectly
-— "Shrek".
+share-ready MP4s (or GIFs) with zero post-processing.
 
 See [DESIGN.md](DESIGN.md) for the full architecture, research findings, and
 milestone plan. Current state: **M3** — right-click records (focused window

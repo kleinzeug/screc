@@ -23,7 +23,7 @@ struct OnboardingView: View {
                 Text("●")
                     .font(.system(size: 26))
                     .foregroundStyle(.red)
-                Text("sčrec")
+                Text("screc")
                     .font(.system(size: 34, weight: .heavy, design: .rounded))
                     .foregroundStyle(.primary)
             }
@@ -49,7 +49,7 @@ struct OnboardingView: View {
                     Spacer()
                 }
                 if permissions.granted {
-                    Text("Granted — sčrec can record your screen.")
+                    Text("Granted — screc can record your screen.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else if !permissions.hasRequested {
@@ -62,7 +62,7 @@ struct OnboardingView: View {
                     .buttonStyle(.borderedProminent)
                 } else {
                     Text("""
-                    Enable **sčrec** under System Settings → Privacy & Security → \
+                    Enable **screc** under System Settings → Privacy & Security → \
                     Screen & System Audio Recording, then relaunch. \
                     (macOS only applies the permission to a freshly launched app — \
                     the relaunch really is required, not a bug.)
@@ -73,7 +73,7 @@ struct OnboardingView: View {
                         Button("Open System Settings") {
                             permissions.openSystemSettings()
                         }
-                        Button("Relaunch sčrec") {
+                        Button("Relaunch screc") {
                             permissions.relaunch()
                         }
                         .buttonStyle(.borderedProminent)
@@ -104,7 +104,7 @@ struct OnboardingView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Start Using sčrec") { onFinish() }
+            Button("Start Using screc") { onFinish() }
                 .buttonStyle(.borderedProminent)
                 .disabled(!permissions.granted)
         }

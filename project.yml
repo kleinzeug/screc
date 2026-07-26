@@ -33,12 +33,13 @@ targets:
           fi
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holzschneider.screc
+        # Anchored to the owned domain screc.app; fixed forever (TCC grants
+        # and the future MAS container key off it).
+        PRODUCT_BUNDLE_IDENTIFIER: app.screc
         PRODUCT_NAME: screc
         GENERATE_INFOPLIST_FILE: YES
-        # Display name carries the diacritic; bundle/product name stays ASCII
-        # (diacritics in product names break signing/upload tooling).
-        INFOPLIST_KEY_CFBundleDisplayName: sčrec
+        # Sober lowercase identity everywhere (diacritic branding retired 2026-07-26).
+        INFOPLIST_KEY_CFBundleDisplayName: screc
         # Menu-bar-only app: no Dock icon, no app menu.
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""

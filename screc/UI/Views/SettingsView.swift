@@ -101,7 +101,7 @@ struct SettingsView: View {
                     Text("●")
                         .font(.system(size: 15))
                         .foregroundStyle(.red)
-                    Text("sčrec")
+                    Text("screc")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                 }
                 Text("One click in the menu bar → a small, share-ready recording.")
@@ -379,7 +379,7 @@ struct SettingsView: View {
                 **License** — Binary distributions obtained through Apple's \
                 App Store are licensed under their App Store purchase terms. \
                 The source code is MIT-licensed for contributors: if you \
-                forked or cloned the repository and built sčrec yourself, you \
+                forked or cloned the repository and built screc yourself, you \
                 agree to offer future code changes back upstream via pull \
                 requests to the repository you originally obtained it from.
                 """)

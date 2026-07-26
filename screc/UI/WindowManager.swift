@@ -27,7 +27,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
                 UserDefaults.standard.set(true, forKey: DefaultsKey.hasCompletedOnboarding)
                 self?.onboardingWindow?.close()
             }
-            let window = makeWindow(title: "Welcome to sčrec",
+            let window = makeWindow(title: "Welcome to screc",
                                     content: AnyView(root))
             // Modern translucent style: blur extends edge-to-edge with no
             // titlebar divider; traffic lights float over the content.
@@ -43,7 +43,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
     func showSettings() {
         if settingsWindow == nil {
-            settingsWindow = makeWindow(title: "sčrec Settings",
+            settingsWindow = makeWindow(title: "screc Settings",
                                         content: AnyView(SettingsView(permissions: permissions)))
         }
         present(settingsWindow!)
@@ -82,7 +82,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.delegate = self
-        // No sčrec window may ever appear in a recording.
+        // No screc window may ever appear in a recording.
         window.sharingType = .none
         window.center()
         return window

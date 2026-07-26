@@ -1,8 +1,8 @@
-# sčrec app icon — AI generator prompt
+# screc app icon — AI generator prompt
 
 ## Main prompt
 
-App icon for "sčrec", a tiny, elegant macOS menu-bar utility that records the
+App icon for "screc", a tiny, elegant macOS menu-bar utility that records the
 screen (a window, a region, or the whole display) and instantly produces
 small, share-ready MP4 clips and GIFs — the kind of polished little
 one-purpose tool you'd find featured on the Mac App Store.

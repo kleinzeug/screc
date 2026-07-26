@@ -475,7 +475,7 @@ final class AppState: ObservableObject {
     private func presentError(_ error: Error) {
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "sčrec couldn't record"
+        alert.messageText = "screc couldn't record"
         alert.informativeText = error.localizedDescription
         alert.runModal()
     }

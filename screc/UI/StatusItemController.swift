@@ -44,24 +44,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.image = Icons.recordingStop
             button.imagePosition = .imageTrailing
             button.attributedTitle = Self.statsTitle(state.stats)
-            button.toolTip = "sčrec — click to stop recording"
+            button.toolTip = "screc — click to stop recording"
         case .finishing:
             button.image = Icons.saving
             button.imagePosition = .imageTrailing
             button.attributedTitle = Self.smallTitle(state.finishingLabel + " ")
-            button.toolTip = "sčrec — finalizing recording"
+            button.toolTip = "screc — finalizing recording"
         case .selecting:
             button.image = Icons.selecting
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
-            button.toolTip = "sčrec — make a selection (Esc cancels)"
+            button.toolTip = "screc — make a selection (Esc cancels)"
         case .idle:
             button.image = permissions.granted ? Icons.readyRedDot : Icons.recordNoPermission
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
             button.toolTip = permissions.granted
-                ? "sčrec — right-click to record \(modeDescription), left-click for the menu"
-                : "sčrec — screen-recording permission needed"
+                ? "screc — right-click to record \(modeDescription), left-click for the menu"
+                : "screc — screen-recording permission needed"
         }
     }
 
@@ -305,9 +305,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                               action: #selector(openOnboarding)))
         }
         menu.addItem(item("Settings…", action: #selector(openSettings), key: ","))
-        menu.addItem(item("About sčrec…", action: #selector(openAbout)))
+        menu.addItem(item("About screc…", action: #selector(openAbout)))
         menu.addItem(.separator())
-        menu.addItem(item("Quit sčrec", action: #selector(quit), key: "q"))
+        menu.addItem(item("Quit screc", action: #selector(quit), key: "q"))
         return menu
     }
 

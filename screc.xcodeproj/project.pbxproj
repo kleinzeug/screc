@@ -318,7 +318,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holzschneider.screc;
+				PRODUCT_BUNDLE_IDENTIFIER = app.screc;
 				PRODUCT_NAME = screc;
 				SDKROOT = macosx;
 			};
@@ -400,7 +400,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holzschneider.screc;
+				PRODUCT_BUNDLE_IDENTIFIER = app.screc;
 				PRODUCT_NAME = screc;
 				SDKROOT = macosx;
 			};
