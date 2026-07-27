@@ -1,0 +1,185 @@
+<meta charset="utf-8">
+<title>screc — social preview</title>
+<style>
+  /* Mirrors the docs/index.html design tokens (dark theme). */
+  :root {
+    --ground: #04060b;
+    --surface: #0b1019;
+    --line: #1c2632;
+    --text: #e2e9f2;
+    --muted: #7c8ea5;
+    --accent: #4b8bff;
+    --rec: #e23b2e;
+    --chrome: #272c36;
+    --chrome-text: #eceff3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 1280px; height: 640px; overflow: hidden;
+    background: var(--ground);
+    color: var(--text);
+    font: 400 17px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+  }
+
+  /* aurora, matching the site's stepped contour bands */
+  .aurora { position: absolute; inset: 0; }
+  .aurora i {
+    position: absolute; border-radius: 50%; display: block;
+  }
+  .a1 { width: 1100px; height: 1100px; left: -180px; top: 180px;
+        background: radial-gradient(circle,
+          rgba(24,86,150,.34) 0%, rgba(24,86,150,.34) 16%,
+          rgba(24,86,150,.22) 16%, rgba(24,86,150,.22) 34%,
+          rgba(24,86,150,.13) 34%, rgba(24,86,150,.13) 54%,
+          rgba(24,86,150,.06) 54%, rgba(24,86,150,.06) 76%,
+          rgba(24,86,150,0) 76%); }
+  .a2 { width: 900px; height: 900px; right: -160px; top: 240px;
+        background: radial-gradient(circle,
+          rgba(18,58,112,.32) 0%, rgba(18,58,112,.32) 18%,
+          rgba(18,58,112,.20) 18%, rgba(18,58,112,.20) 38%,
+          rgba(18,58,112,.11) 38%, rgba(18,58,112,.11) 60%,
+          rgba(18,58,112,0) 60%); }
+  .a3 { width: 700px; height: 700px; right: 120px; top: -260px;
+        background: radial-gradient(circle,
+          rgba(226,59,46,.20) 0%, rgba(226,59,46,.20) 18%,
+          rgba(226,59,46,.11) 18%, rgba(226,59,46,.11) 40%,
+          rgba(226,59,46,.05) 40%, rgba(226,59,46,.05) 64%,
+          rgba(226,59,46,0) 64%); }
+
+  .grain {
+    position: absolute; inset: 0; opacity: .07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .stage { position: relative; padding: 46px 64px; height: 100%; }
+
+  /* ---- the macOS menu bar ---- */
+  .menubar {
+    display: flex; align-items: center; gap: 22px;
+    background: var(--chrome); color: var(--chrome-text);
+    border-radius: 12px; padding: 9px 18px;
+    font-size: 14.5px;
+    box-shadow: 0 20px 50px -18px rgba(0, 0, 0, .8);
+  }
+  .menubar .appname { font-weight: 700; }
+  .menubar .dim { opacity: .58; }
+  .menubar .spacer { flex: 1; }
+  .menubar svg { fill: currentColor; opacity: .72; display: block; }
+  .clock { font-variant-numeric: tabular-nums; opacity: .82; }
+
+  /* the star of the image */
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255, 255, 255, .13);
+    border-radius: 7px; padding: 3px 12px;
+    font-weight: 800; letter-spacing: .05em; font-size: 13.5px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .14),
+                0 0 26px 2px rgba(226, 59, 46, .75);
+  }
+  .badge::before {
+    content: ""; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--rec);
+    box-shadow: 0 0 12px 2px rgba(226, 59, 46, .9);
+  }
+
+  /* ---- the open menu, hanging off the badge ---- */
+  .menu {
+    position: absolute; top: 92px; right: 148px; width: 306px;
+    background: rgba(18, 24, 34, .93);
+    border: 1px solid rgba(255, 255, 255, .10);
+    border-radius: 13px; padding: 7px;
+    font-size: 14px; line-height: 1.35;
+    box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .9);
+  }
+  .menu .sect {
+    font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); padding: 7px 11px 4px; font-weight: 700;
+  }
+  .menu .item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 11px; border-radius: 8px; white-space: nowrap;
+  }
+  .menu .item .check { width: 13px; flex: none; text-align: center; font-size: 12px; }
+  .menu .item.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .menu .item .size {
+    margin-left: auto; padding-left: 14px; font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .menu hr { border: none; border-top: 1px solid rgba(255,255,255,.09); margin: 7px 9px; }
+
+  /* ---- wordmark block ---- */
+  .word { position: absolute; left: 64px; bottom: 74px; }
+  .word .lockup { display: flex; align-items: baseline; gap: 14px; }
+  .word .dot { color: var(--rec); font-size: 40px; line-height: 1; }
+  .word h1 {
+    margin: 0; font-size: 78px; line-height: 1;
+    font-weight: 800; font-style: italic; letter-spacing: -.03em;
+  }
+  .word p {
+    margin: 18px 0 0; font-size: 25px; color: var(--muted); letter-spacing: -.01em;
+  }
+  .word .rule { width: 78px; height: 4px; background: var(--rec); border-radius: 2px; margin-top: 26px; }
+</style>
+
+<div class="aurora"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+<div class="grain"></div>
+
+<div class="stage">
+  <div class="menubar">
+    <span class="appname">Finder</span>
+    <span class="dim">File</span><span class="dim">Edit</span><span class="dim">View</span><span class="dim">Go</span>
+    <span class="spacer"></span>
+
+    <span class="badge">REC</span>
+
+    <!-- battery -->
+    <svg width="26" height="14" viewBox="0 0 26 13" aria-hidden="true">
+      <rect x=".6" y=".6" width="20" height="11.8" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+      <rect x="2.2" y="2.2" width="14" height="8.6" rx="1.9"/>
+      <path d="M22.4 4.4c1.5.5 1.5 3.7 0 4.2V4.4z" opacity=".55"/>
+    </svg>
+    <!-- wifi -->
+    <svg width="18" height="14" viewBox="0 0 18 13" aria-hidden="true">
+      <path d="M9 12.4l2.3-2.8a3.6 3.6 0 0 0-4.6 0L9 12.4z"/>
+      <path d="M9 5.7c1.8 0 3.4.7 4.6 1.8l1.5-1.8A9.1 9.1 0 0 0 9 3.3c-2.3 0-4.5.9-6.1 2.4l1.5 1.8A6.7 6.7 0 0 1 9 5.7z" opacity=".8"/>
+      <path d="M9 1.1c2.9 0 5.6 1.1 7.6 2.9L18 2.2A13.3 13.3 0 0 0 9 -1 13.3 13.3 0 0 0 0 2.2l1.4 1.8A11.2 11.2 0 0 1 9 1.1z" opacity=".55"/>
+    </svg>
+    <!-- control centre -->
+    <svg width="16" height="14" viewBox="0 0 16 13" aria-hidden="true">
+      <rect x="0" y="1.4" width="16" height="1.8" rx=".9"/>
+      <circle cx="11" cy="2.3" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="0" y="9.2" width="16" height="1.8" rx=".9"/>
+      <circle cx="5" cy="10.1" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    <!-- spotlight -->
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <circle cx="6.2" cy="6.2" r="4.6" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M9.7 9.7l4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    </svg>
+    <span class="clock">Tue 14:03</span>
+  </div>
+
+  <div class="menu">
+    <div class="sect">Start Recording</div>
+    <div class="item on"><span class="check">✓</span>Focused Window</div>
+    <div class="item"><span class="check"></span>Selected Window</div>
+    <div class="item"><span class="check"></span>Screen Region</div>
+    <div class="item"><span class="check"></span>Full Screen</div>
+    <hr>
+    <div class="sect">Recent Recordings</div>
+    <div class="item"><span class="check"></span>fix-repro.mp4<span class="size">8.4 MB</span></div>
+    <div class="item"><span class="check"></span>hover-bug.gif<span class="size">2.1 MB</span></div>
+  </div>
+
+  <div class="word">
+    <div class="lockup">
+      <span class="dot">●</span>
+      <h1>screc</h1>
+    </div>
+    <p>Click the dot. Send the clip.</p>
+    <div class="rule"></div>
+  </div>
+</div>
