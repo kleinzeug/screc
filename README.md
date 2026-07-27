@@ -21,6 +21,10 @@ subscription.
 | Screen region | drag it out, then nudge edges and corners (⇧ locks aspect, ⌥ mirrors) |
 | Full screen | per display |
 
+Press **⌥⇧6** anywhere to start or stop recording in whichever mode is
+checked in the menu — full screen on the main display until you pick another.
+Rebindable in Settings.
+
 Output is live-encoded H.264/HEVC at your target bitrate, or GIF (auto-converted
 on stop, with an in-app frame editor for trimming frames). Recordings land in
 `/tmp/screc` by default, so they clean themselves up on reboot.

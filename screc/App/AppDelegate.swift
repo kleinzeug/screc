@@ -3,7 +3,10 @@ import KeyboardShortcuts
 @preconcurrency import UserNotifications
 
 extension KeyboardShortcuts.Name {
-    static let toggleRecording = Self("toggleRecording")
+    /// ⌥⇧6 out of the box; the user can rebind it in Settings, and their
+    /// choice wins from then on.
+    static let toggleRecording = Self("toggleRecording",
+                                      default: .init(.six, modifiers: [.option, .shift]))
 }
 
 @MainActor

@@ -524,19 +524,24 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(data, forKey: DefaultsKey.defaultCaptureMode)
     }
 
+    /// Before any mode has been picked, the hotkey and the primary click
+    /// record the full main display — the one carrying the menu bar, i.e. the
+    /// display the global origin sits on.
+    static var initialDefaultMode: DefaultCaptureMode { .display(CGMainDisplayID()) }
+
     private static func loadDefaultMode() -> DefaultCaptureMode {
         guard let data = UserDefaults.standard.data(forKey: DefaultsKey.defaultCaptureMode),
               let stored = try? JSONDecoder().decode(StoredMode.self, from: data)
-        else { return .window }
+        else { return initialDefaultMode }
         switch stored.kind {
         case "display":
-            return stored.display.map { .display($0) } ?? .window
+            return stored.display.map { .display($0) } ?? initialDefaultMode
         case "region":
             if let id = stored.display, let x = stored.x, let y = stored.y,
                let width = stored.width, let height = stored.height {
                 return .region(id, CGRect(x: x, y: y, width: width, height: height))
             }
-            return .window
+            return initialDefaultMode
         case "pinned":
             if let owner = stored.owner, let title = stored.title,
                let x = stored.x, let y = stored.y,
@@ -544,9 +549,11 @@ final class AppState: ObservableObject {
                 return .pinned(ownerName: owner, title: title,
                                normalizedRect: CGRect(x: x, y: y, width: width, height: height))
             }
+            return initialDefaultMode
+        case "window":
             return .window
         default:
-            return .window
+            return initialDefaultMode
         }
     }
 }
