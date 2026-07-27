@@ -1,6 +1,6 @@
-# screc
+# *screc*
 
-A one-click menu-bar screen recorder for macOS that produces small,
+***screc*** is a one-click menu-bar screen recorder for macOS that produces small,
 share-ready MP4s (or GIFs) with zero post-processing.
 
 A [Kleinzeug](https://github.com/kleinzeug) tool — small tools, properly made.
@@ -25,9 +25,9 @@ See [DESIGN.md](DESIGN.md) for the architecture, the research behind it, and the
 milestone plan. Current state: **M4** — feature-complete and in daily use.
 Next: notarized Developer ID build (M5), then a Mac App Store variant (M6).
 
-## Getting screc
+## Getting ***screc***
 
-**Build it yourself.** That is the primary way to get screc, it is free, and it
+**Build it yourself.** That is the primary way to get ***screc***, it is free, and it
 stays free — the source here is complete, with no crippled features and no
 paywalled build. Instructions below.
 
@@ -68,11 +68,11 @@ The one dependency, [KeyboardShortcuts](https://github.com/sindresorhus/Keyboard
 ### First run: screen-recording permission
 
 macOS gates screen capture behind a privacy permission that **only takes effect
-after the app is relaunched** — this is macOS behavior, not a bug in screc. The
+after the app is relaunched** — this is macOS behavior, not a bug in ***screc***. The
 welcome window walks you through it: grant access, then hit *Relaunch screc*.
 
 If the menu-bar icon shows a hollow dot, permission is still missing. Enable
-screc under **System Settings → Privacy & Security → Screen & System Audio
+***screc*** under **System Settings → Privacy & Security → Screen & System Audio
 Recording** and relaunch.
 
 ### Signing note (worth two minutes)
@@ -111,13 +111,13 @@ license below. Bug reports and feature ideas go in
 
 Binaries distributed through the Mac App Store are covered by Apple's standard
 EULA and sold for a small fee. Buying one is never required — it exists purely
-for people who would rather not build from source. If you improve screc,
+for people who would rather not build from source. If you improve ***screc***,
 sending the change back upstream as a pull request is appreciated (a request,
 not a condition).
 
 ## Support the work
 
-If screc saves you the QuickTime → crop → ffmpeg ritual often enough to be
+If ***screc*** saves you the QuickTime → crop → ffmpeg ritual often enough to be
 worth a coffee:
 
 <a href="https://www.buymeacoffee.com/holzschneider" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" width="180"></a>
