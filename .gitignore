@@ -1,4 +1,7 @@
-# Xcode
+# Xcode — the project is generated from project.yml by XcodeGen.
+# Committing it produces merge conflicts and stale settings (it once kept
+# the pre-rebrand display name alive); run `xcodegen generate` instead.
+*.xcodeproj/
 build/
 DerivedData/
 xcuserdata/
