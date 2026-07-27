@@ -1,5 +1,5 @@
 import AppKit
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 enum FocusedWindow {
     /// Finds the focused window: the frontmost application's top layer-0

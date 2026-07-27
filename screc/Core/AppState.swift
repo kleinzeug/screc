@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 struct RecordingStats: Equatable {
     var duration: TimeInterval = 0

@@ -1,5 +1,5 @@
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 
 enum Notifier {
     /// Banner when a recording lands on disk; clicking it opens the file

@@ -112,6 +112,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             : String(format: "%d:%02d", m, s)
     }
 
+    @MainActor
     private enum Icons {
         /// Idle: the classic "● REC" badge (red dot only when operational;
         /// hollow dot while the screen-recording permission is missing).

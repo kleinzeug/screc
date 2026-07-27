@@ -1,6 +1,6 @@
 import AppKit
 import KeyboardShortcuts
-import UserNotifications
+@preconcurrency import UserNotifications
 
 extension KeyboardShortcuts.Name {
     static let toggleRecording = Self("toggleRecording")

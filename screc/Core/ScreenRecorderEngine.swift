@@ -1,7 +1,7 @@
 import AVFoundation
 import AppKit
 import QuartzCore
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 enum CaptureTarget {
     case window(SCWindow)
