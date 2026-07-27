@@ -3,14 +3,19 @@
 A one-click menu-bar screen recorder for macOS that produces small,
 share-ready MP4s (or GIFs) with zero post-processing.
 
+A [Kleinzeug](https://github.com/kleinzeug) tool — small tools, properly made.
+Home: [screc.app](https://screc.app) · Source: [github.com/kleinzeug/screc](https://github.com/kleinzeug/screc)
+
 See [DESIGN.md](DESIGN.md) for the full architecture, research findings, and
-milestone plan. Current state: **M3** — right-click records (focused window
-with follow-focus, a pinned window incl. sub-region that survives window
-closes, a screen region, or a full screen), live-encoded to a small
-share-ready MP4 in `/tmp/screc`; the GIF preset auto-converts on stop and any
-recent MP4 converts via ⌥-click. Recents menu with one-click open in
-QuickTime/Preview and Clear All. Polish (M4), Developer ID (M5), and the App
-Store variant (M6) are next.
+milestone plan. Current state: **M4** — feature-complete and in daily use:
+right-click records (focused window with follow-focus, a pinned window incl.
+sub-region that survives window closes, a screen region, or a full screen),
+live-encoded to a small share-ready MP4; GIF preset auto-converts on stop,
+any recording converts via ⌥-click, and an in-app frame editor trims GIF
+frames. Recents menu with one-click open in QuickTime/Preview, configurable
+storage (default `/tmp/screc`, cleared on reboot), global hotkey, launch at
+login, and a full preset system. Next: notarized Developer ID build (M5),
+then the Mac App Store variant (M6).
 
 ## Building
 
