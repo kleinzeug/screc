@@ -19,18 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-A note on how this is meant to be used
---------------------------------------
-
-The source above is MIT-licensed: clone it, build it, use it, change it.
-
-Binaries distributed through the Mac App Store are covered by Apple's standard
-End User License Agreement instead, and are sold for a small fee. Buying one is
-never required — it exists for people who would rather not clone a repository
-and build from source.
-
-If you improve screc, sending the change back upstream as a pull request is
-appreciated. That is a request, not a condition of the license above.

@@ -112,6 +112,8 @@ license below. Bug reports and feature ideas go in
 ## License
 
 [MIT](LICENSE) for the source: clone it, build it, change it, ship your fork.
+See [LICENSING.md](LICENSING.md) for how that fits together with the paid App
+Store build.
 
 Binaries distributed through the Mac App Store are covered by Apple's standard
 EULA and sold for a small fee. Buying one is never required — it exists purely
