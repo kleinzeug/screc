@@ -1,0 +1,83 @@
+name: Build
+
+# Proves the promise on screc.app: a fresh clone builds with two commands.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build from a clean clone
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are needed: the version is stamped from `git describe`.
+          fetch-depth: 0
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (Release)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project screc.xcodeproj \
+            -scheme screc \
+            -configuration Release \
+            -derivedDataPath build \
+            build
+
+      - name: Verify app bundle
+        run: |
+          APP="build/Build/Products/Release/screc.app"
+          PLIST="$APP/Contents/Info.plist"
+          test -d "$APP" || { echo "::error::no app bundle produced"; exit 1; }
+
+          id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST")
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          agent=$(/usr/libexec/PlistBuddy -c "Print :LSUIElement" "$PLIST")
+          echo "bundle id: $id"
+          echo "version:   $version"
+          echo "agent app: $agent"
+
+          [ "$id" = "app.screc" ] || { echo "::error::unexpected bundle id $id"; exit 1; }
+          [ "$agent" = "true" ] || { echo "::error::LSUIElement not set — would show a Dock icon"; exit 1; }
+          case "$version" in
+            0.0.0|"") echo "::error::version not stamped from git describe"; exit 1 ;;
+          esac
+
+          test -f "$APP/Contents/Resources/AppIcon.icns" \
+            || { echo "::error::app icon missing from bundle"; exit 1; }
+
+          # The version stamp rewrites Info.plist — make sure that did not
+          # invalidate the signature (this is what would break notarization).
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Package
+        run: |
+          cd build/Build/Products/Release
+          ditto -c -k --keepParent screc.app screc.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screc-app
+          path: build/Build/Products/Release/screc.zip
+          retention-days: 14
+          if-no-files-found: error

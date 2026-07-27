@@ -1,5 +1,9 @@
 # *screc*
 
+[![Build](https://github.com/kleinzeug/screc/actions/workflows/build.yml/badge.svg)](https://github.com/kleinzeug/screc/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: macOS 15+](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey.svg)
+
 ***screc*** is a one-click menu-bar screen recorder for macOS that produces small,
 share-ready MP4s (or GIFs) with zero post-processing.
 
