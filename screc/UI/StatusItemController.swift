@@ -274,43 +274,55 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         store.validate()
-        if !store.recordings.isEmpty {
+        let older = store.olderRecordings()
+        if !store.recordings.isEmpty || !older.isEmpty {
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem.sectionHeader(title: "Recent Recordings"))
-            for recording in store.recordings {
-                let size = ByteCountFormatter.string(fromByteCount: recording.bytes,
-                                                     countStyle: .file)
-                let entry = item("\(recording.name)  ·  \(size)",
-                                 action: #selector(openRecording(_:)))
-                entry.representedObject = recording.url
-                entry.keyEquivalentModifierMask = []
-                menu.addItem(entry)
-                // ⌥ swaps the entry for its secondary action.
-                let isGIF = recording.url.pathExtension.lowercased() == "gif"
-                let alternate = isGIF
-                    ? item("Edit Frames  ·  \(recording.name)",
-                           action: #selector(editRecording(_:)))
-                    : item("Convert to GIF  ·  \(recording.name)",
-                           action: #selector(convertRecording(_:)))
-                alternate.representedObject = recording.url
-                alternate.isAlternate = true
-                alternate.keyEquivalentModifierMask = [.option]
-                if !isGIF { alternate.isEnabled = state.phase == .idle }
-                menu.addItem(alternate)
-
-                // ⌘ reveals the file instead of opening it. A second
-                // alternate is fine: these rows share an empty key
-                // equivalent, so AppKit pairs them by modifier mask.
-                let reveal = item("Reveal in Finder  ·  \(recording.name)",
-                                  action: #selector(revealRecording(_:)))
-                reveal.representedObject = recording.url
-                reveal.isAlternate = true
-                reveal.keyEquivalentModifierMask = [.command]
-                menu.addItem(reveal)
+            if !store.recordings.isEmpty {
+                menu.addItem(NSMenuItem.sectionHeader(title: "Recent Recordings"))
+                for recording in store.recordings {
+                    addRecordingRows(url: recording.url, bytes: recording.bytes, to: menu)
+                }
             }
-            let freed = ByteCountFormatter.string(fromByteCount: store.totalBytes,
-                                                  countStyle: .file)
-            menu.addItem(item("Clear All (frees \(freed))", action: #selector(clearAll)))
+            // Files that scrolled out of the recents list (or predate this
+            // run) stay reachable instead of silently accumulating on disk.
+            if !older.isEmpty {
+                let parent = item("Older Recordings (\(older.count))", action: nil)
+                let submenu = NSMenu()
+                submenu.autoenablesItems = false
+                for file in older.prefix(Self.olderMenuLimit) {
+                    addRecordingRows(url: file.url, bytes: file.bytes, to: submenu)
+                }
+                if older.count > Self.olderMenuLimit {
+                    let more = item("… and \(older.count - Self.olderMenuLimit) more",
+                                    action: nil)
+                    more.isEnabled = false
+                    submenu.addItem(more)
+                }
+                submenu.addItem(.separator())
+                let olderBytes = older.reduce(0) { $0 + $1.bytes }
+                let olderSize = ByteCountFormatter.string(fromByteCount: olderBytes,
+                                                          countStyle: .file)
+                // Clears only the overhang — the recents above stay.
+                let clearOlder = Prefs.storageChoice == "tmp"
+                    ? item("Clear Older Recordings (frees \(olderSize))",
+                           action: #selector(clearOlderRecordings))
+                    : item("Clear Older Recordings (\(olderSize))…",
+                           action: #selector(clearOlderRecordings))
+                submenu.addItem(clearOlder)
+                submenu.addItem(item("Open Folder in Finder",
+                                     action: #selector(openStorageFolder)))
+                parent.submenu = submenu
+                menu.addItem(parent)
+            }
+            let totalBytes = store.totalBytes + older.reduce(0) { $0 + $1.bytes }
+            let size = ByteCountFormatter.string(fromByteCount: totalBytes,
+                                                 countStyle: .file)
+            // /tmp clears immediately (throwaway by design); permanent
+            // locations confirm and go through the Trash — hence the ellipsis.
+            let clear = Prefs.storageChoice == "tmp"
+                ? item("Clear All (frees \(size))", action: #selector(clearAll))
+                : item("Clear All (\(size))…", action: #selector(clearAll))
+            menu.addItem(clear)
         }
 
         menu.addItem(.separator())
@@ -321,8 +333,45 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(item("Settings…", action: #selector(openSettings), key: ","))
         menu.addItem(item("About screc…", action: #selector(openAbout)))
         menu.addItem(.separator())
-        menu.addItem(item("Quit screc", action: #selector(quit), key: "q"))
+        // Quitting mid-recording is safe (the app delegate finalizes the file
+        // first) — the label just says so.
+        menu.addItem(item(state.phase == .recording ? "Stop & Quit screc" : "Quit screc",
+                          action: #selector(quit), key: "q"))
         return menu
+    }
+
+    /// Keep the submenu skimmable; overflow is a disabled "… and N more" row
+    /// plus the Finder escape hatch.
+    private static let olderMenuLimit = 25
+
+    /// The three menu rows every listed recording gets: open (⌘ variant
+    /// reveals), an ⌥ alternate (Convert to GIF / Edit Frames), and a ⌘
+    /// alternate (Reveal in Finder). The rows share an empty key equivalent,
+    /// so AppKit pairs the alternates by modifier mask.
+    private func addRecordingRows(url: URL, bytes: Int64, to menu: NSMenu) {
+        let name = url.lastPathComponent
+        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        let entry = item("\(name)  ·  \(size)", action: #selector(openRecording(_:)))
+        entry.representedObject = url
+        entry.keyEquivalentModifierMask = []
+        menu.addItem(entry)
+
+        let isGIF = url.pathExtension.lowercased() == "gif"
+        let alternate = isGIF
+            ? item("Edit Frames  ·  \(name)", action: #selector(editRecording(_:)))
+            : item("Convert to GIF  ·  \(name)", action: #selector(convertRecording(_:)))
+        alternate.representedObject = url
+        alternate.isAlternate = true
+        alternate.keyEquivalentModifierMask = [.option]
+        if !isGIF { alternate.isEnabled = state.phase == .idle }
+        menu.addItem(alternate)
+
+        let reveal = item("Reveal in Finder  ·  \(name)",
+                          action: #selector(revealRecording(_:)))
+        reveal.representedObject = url
+        reveal.isAlternate = true
+        reveal.keyEquivalentModifierMask = [.command]
+        menu.addItem(reveal)
     }
 
     /// One entry per mode — never more. Normally each opens its picker;
@@ -501,7 +550,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         windowManager.showGIFEditor(url: url)
     }
 
-    @objc private func clearAll() { store.clearAll() }
+    private enum ClearScope { case all, olderOnly }
+
+    @objc private func clearAll() { clear(scope: .all) }
+    @objc private func clearOlderRecordings() { clear(scope: .olderOnly) }
+
+    private func clear(scope: ClearScope) {
+        // /tmp deletes immediately (throwaway by design); permanent storage
+        // confirms, then Trashes (recoverable) rather than deletes. The
+        // count/size are re-read at click time, not menu-build time.
+        let toTrash = Prefs.storageChoice != "tmp"
+        let older = store.olderRecordings()
+        let count = older.count + (scope == .all ? store.recordings.count : 0)
+        let bytes = older.reduce(0) { $0 + $1.bytes }
+            + (scope == .all ? store.totalBytes : 0)
+        if toTrash, count > 0 {
+            let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            let alert = NSAlert()
+            alert.messageText = count == 1
+                ? "Move 1 recording to the Trash?"
+                : "Move \(count) recordings to the Trash?"
+            alert.informativeText = scope == .all
+                ? "Every recording screc lists in \(RecordingStore.directory.path) "
+                    + "— \(size) in total — will be moved to the Trash."
+                : "The \(count == 1 ? "older recording" : "\(count) older recordings") in "
+                    + "\(RecordingStore.directory.path) — \(size) in total — will be "
+                    + "moved to the Trash. The recent recordings stay."
+            alert.addButton(withTitle: "Move to Trash")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons.first?.hasDestructiveAction = true
+            NSApp.activate()
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        switch scope {
+        case .all: store.clearAll(toTrash: toTrash)
+        case .olderOnly: store.clearOlder(toTrash: toTrash)
+        }
+    }
+
+    @objc private func openStorageFolder() {
+        NSWorkspace.shared.open(RecordingStore.directory)
+    }
     @objc private func openOnboarding() { windowManager.showOnboarding() }
     @objc private func openSettings() { windowManager.showSettings() }
     @objc private func openAbout() { windowManager.showOnboarding() }

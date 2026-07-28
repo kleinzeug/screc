@@ -14,3 +14,6 @@ xcuserdata/
 
 # Local signing identity — never commit account information.
 Config/local.xcconfig
+
+# Pre-release working document (local checklist, not part of the project).
+release-review.md

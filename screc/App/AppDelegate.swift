@@ -104,6 +104,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// A quit while recording (menu, ⌘Q, logout, shutdown) must never tear
+    /// down a live AVAssetWriter — an unfinalized MP4 has no moov atom and is
+    /// unreadable. Stop, wait for the file to land, then let go.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if state.phase == .recording {
+            state.stopRecording()
+        }
+        guard state.phase == .finishing else { return .terminateNow }
+        terminationReplyPending = true
+        state.onReturnToIdle = { [weak self] in self?.replyToPendingTermination() }
+        // Safety net: a hung finalization must not make the app unquittable.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            self?.replyToPendingTermination()
+        }
+        return .terminateLater
+    }
+
+    private var terminationReplyPending = false
+
+    private func replyToPendingTermination() {
+        guard terminationReplyPending else { return }
+        terminationReplyPending = false
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }

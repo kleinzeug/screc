@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 @preconcurrency import ScreenCaptureKit
 
@@ -41,7 +42,13 @@ final class AppState: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .idle {
-        didSet { onChange?() }
+        didSet {
+            onChange?()
+            if phase == .idle, let hook = onReturnToIdle {
+                onReturnToIdle = nil
+                hook()
+            }
+        }
     }
     @Published private(set) var stats = RecordingStats() {
         didSet { onChange?() }
@@ -60,6 +67,10 @@ final class AppState: ObservableObject {
     /// AppKit-side observer hook (the status item). SwiftUI views observe the
     /// `@Published` properties instead.
     var onChange: (() -> Void)?
+    /// One-shot: fires when the phase next returns to `.idle`. The app
+    /// delegate uses it to hold termination until the recording file is
+    /// finalized (an unfinalized MP4 has no moov atom and is unreadable).
+    var onReturnToIdle: (() -> Void)?
 
     private let store: RecordingStore
     private var engine: ScreenRecorderEngine?
@@ -104,13 +115,6 @@ final class AppState: ObservableObject {
     func record(_ request: CaptureRequest) {
         guard phase == .idle, !isStarting else { return }
         isStarting = true
-        defaultMode = Self.mode(for: request)
-        switch request {
-        case .region(let id, let rect): ModeMemory.rememberRegion(display: id, rect: rect)
-        case .pinnedWindow(let sel): ModeMemory.rememberPinned(sel)
-        case .display(let id): ModeMemory.rememberDisplay(id)
-        case .focusedWindow: break
-        }
         Task {
             defer { isStarting = false }
             do {
@@ -132,8 +136,23 @@ final class AppState: ObservableObject {
                     currentPinnedDisplayID = Self.screenContaining(selection.frame)?.displayID ?? 0
                 }
                 try await begin(target: target, request: request)
+                // Only a start that actually succeeded becomes the remembered
+                // default and mode memory — a failed one must not overwrite
+                // the last working configuration.
+                defaultMode = Self.mode(for: request)
+                switch request {
+                case .region(let id, let rect):
+                    ModeMemory.rememberRegion(display: id, rect: rect)
+                case .pinnedWindow(let sel):
+                    ModeMemory.rememberPinned(sel)
+                case .display(let id):
+                    ModeMemory.rememberDisplay(id)
+                case .focusedWindow:
+                    break
+                }
             } catch {
                 currentPinned = nil
+                store.activeRecordingURL = nil
                 presentError(error)
             }
         }
@@ -156,18 +175,34 @@ final class AppState: ObservableObject {
                 if Prefs.discardShortRecordings, result.duration < 3 {
                     // Accidental start-stop — not worth keeping.
                     try? FileManager.default.removeItem(at: result.url)
-                } else if let config = activeConfig, config.format == .gif {
+                } else if let config = activeConfig, config.format == .gif,
+                          confirmLargeGIF(
+                              frameEstimate: Int(result.duration * Double(config.maxFPS)),
+                              cancelTitle: "Keep as MP4") {
                     finishingLabel = "converting…"
                     let gifURL = Self.gifURL(for: result.url)
-                    try await GIFConverter.convert(movie: result.url, to: gifURL,
-                                                   maxWidth: config.maxWidth ?? 640,
-                                                   fps: config.maxFPS,
-                                                   loopForever: config.gifLoopForever,
-                                                   dither: config.gifDitherIntensity)
-                    try? FileManager.default.removeItem(at: result.url)
-                    store.add(gifURL)
-                    Notifier.recordingFinished(url: gifURL)
+                    // The half-written GIF must not surface in the older-files
+                    // scan (the MP4 master is finalized at this point).
+                    store.activeRecordingURL = gifURL
+                    do {
+                        try await GIFConverter.convert(movie: result.url, to: gifURL,
+                                                       maxWidth: config.maxWidth ?? 640,
+                                                       fps: config.maxFPS,
+                                                       loopForever: config.gifLoopForever,
+                                                       dither: config.gifDitherIntensity)
+                        try? FileManager.default.removeItem(at: result.url)
+                        store.add(gifURL)
+                        Notifier.recordingFinished(url: gifURL)
+                    } catch {
+                        // The recording itself succeeded — keep the finalized
+                        // MP4 rather than orphaning it, and say what failed.
+                        store.add(result.url)
+                        Notifier.recordingFinished(url: result.url)
+                        presentError(error, title: "GIF conversion failed")
+                    }
                 } else {
+                    // Non-GIF config — or a declined large-GIF conversion,
+                    // which keeps the already-finalized MP4 instead.
                     store.add(result.url)
                     Notifier.recordingFinished(url: result.url)
                 }
@@ -177,6 +212,7 @@ final class AppState: ObservableObject {
             self.engine = nil
             self.activeConfig = nil
             self.stats = RecordingStats()
+            self.store.activeRecordingURL = nil
             self.phase = .idle
         }
     }
@@ -193,8 +229,15 @@ final class AppState: ObservableObject {
                loop: current.gifLoopForever, dither: current.gifDitherIntensity)
             : (width: 640, fps: 12, loop: true, dither: 0)
         Task {
+            let duration = (try? await AVURLAsset(url: movieURL).load(.duration).seconds) ?? 0
+            guard confirmLargeGIF(frameEstimate: Int(duration * Double(params.fps)),
+                                  cancelTitle: "Cancel") else {
+                self.phase = .idle
+                return
+            }
+            let gifURL = Self.gifURL(for: movieURL)
+            store.activeRecordingURL = gifURL
             do {
-                let gifURL = Self.gifURL(for: movieURL)
                 try await GIFConverter.convert(movie: movieURL, to: gifURL,
                                                maxWidth: params.width,
                                                fps: params.fps,
@@ -202,8 +245,9 @@ final class AppState: ObservableObject {
                                                dither: params.dither)
                 store.add(gifURL)
             } catch {
-                presentError(error)
+                presentError(error, title: "GIF conversion failed")
             }
+            store.activeRecordingURL = nil
             self.phase = .idle
         }
     }
@@ -317,6 +361,7 @@ final class AppState: ObservableObject {
         let config = PresetLibrary.currentConfig
         activeConfig = config
         let url = store.newOutputURL(fileExtension: "mp4")
+        store.activeRecordingURL = url
         let engine = ScreenRecorderEngine(target: target, config: config, outputURL: url)
         engine.onStatsUpdate = { [weak self] stats in
             self?.stats = stats
@@ -327,7 +372,11 @@ final class AppState: ObservableObject {
         // the reason unless the user did it deliberately.
         engine.onAutoStop = { [weak self] error in
             guard let self else { return }
+            // Already .finishing? The user stopped simultaneously — nothing
+            // was interrupted, so nothing to explain.
+            let wasRecording = self.phase == .recording
             self.stopRecording()
+            guard wasRecording else { return }
             if let scError = error as? SCStreamError, scError.code == .userStopped {
                 return // stopped via the system's capture indicator — normal
             }
@@ -404,7 +453,7 @@ final class AppState: ObservableObject {
     // MARK: Pinned mode
 
     private func pinnedFrameChanged(_ frame: NSRect) {
-        guard phase == .recording, let engine, let selection = currentPinned else { return }
+        guard phase == .recording, engine != nil, let selection = currentPinned else { return }
         currentPinned?.frame = frame
         let norm = selection.normalizedRect
         passepartout?.update(hole: Self.pinnedHole(windowFrame: frame, norm: norm))
@@ -546,10 +595,29 @@ final class AppState: ObservableObject {
                       width: rect.width, height: rect.height)
     }
 
-    private func presentError(_ error: Error) {
+    /// GIF conversion holds every frame in memory until finalize — unbounded
+    /// input balloons to gigabytes of RAM and a comically large file. Above
+    /// this many estimated frames, ask first. The estimate (duration × target
+    /// fps) is an upper bound: idle-heavy recordings convert to far fewer.
+    private static let gifFrameWarningThreshold = 600
+
+    private func confirmLargeGIF(frameEstimate: Int, cancelTitle: String) -> Bool {
+        guard frameEstimate > Self.gifFrameWarningThreshold else { return true }
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "screc couldn't record"
+        alert.messageText = "Convert a long recording to GIF?"
+        alert.informativeText = "This is up to \(frameEstimate) GIF frames. The conversion "
+            + "holds every frame in memory, can take a while, and the file will be "
+            + "large — GIF works best for clips of a few seconds."
+        alert.addButton(withTitle: "Convert Anyway")
+        alert.addButton(withTitle: cancelTitle)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func presentError(_ error: Error, title: String = "screc couldn't record") {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = title
         alert.informativeText = error.localizedDescription
         alert.runModal()
     }
