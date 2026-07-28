@@ -79,6 +79,7 @@ final class AppState: ObservableObject {
     // Owned by the AppDelegate.
     weak var regionSelector: RegionSelectionController?
     weak var windowPicker: WindowPickController?
+    weak var screenPicker: ScreenPickController?
     weak var passepartout: PassepartoutController?
     weak var windowTracker: FocusedWindowTracker?
     weak var pinnedTracker: PinnedWindowTracker?
@@ -93,21 +94,10 @@ final class AppState: ObservableObject {
     /// Primary click on the status item: repeat the last-used capture mode.
     func recordDefault() {
         switch defaultMode {
-        case .window:
-            record(.focusedWindow)
-        case .display(let displayID):
-            record(.display(displayID))
-        case .region(let displayID, let rect):
-            record(.region(displayID, rect))
-        case .pinned(let ownerName, let title, let normalizedRect):
-            let identity = PinnedWindowTracker.Identity(ownerName: ownerName, title: title)
-            if let found = PinnedWindowTracker.findWindow(matching: identity) {
-                record(.pinnedWindow(PinnedSelection(
-                    windowID: found.id, ownerName: ownerName, title: title,
-                    frame: found.frame, normalizedRect: normalizedRect)))
-            } else {
-                selectPinnedWindow() // window gone — fall back to the picker
-            }
+        case .window: record(.focusedWindow)
+        case .display: recordFullScreenRemembered()
+        case .region: recordRegionRemembered()
+        case .pinned: recordSelectedWindowRemembered()
         }
     }
 
@@ -115,6 +105,12 @@ final class AppState: ObservableObject {
         guard phase == .idle, !isStarting else { return }
         isStarting = true
         defaultMode = Self.mode(for: request)
+        switch request {
+        case .region(let id, let rect): ModeMemory.rememberRegion(display: id, rect: rect)
+        case .pinnedWindow(let sel): ModeMemory.rememberPinned(sel)
+        case .display(let id): ModeMemory.rememberDisplay(id)
+        case .focusedWindow: break
+        }
         Task {
             defer { isStarting = false }
             do {
@@ -219,12 +215,61 @@ final class AppState: ObservableObject {
         return url
     }
 
+    // MARK: - Remembered starts
+    //
+    // Used by the primary click, the per-mode hotkeys and the ⌥ menu entries:
+    // reuse what the mode last recorded, and only ask when that is gone.
+
+    /// The last region, if its display still exists and still contains it.
+    func recordRegionRemembered() {
+        if let (displayID, rect) = ModeMemory.usableRegion() {
+            record(.region(displayID, rect))
+        } else {
+            selectRegion()
+        }
+    }
+
+    /// The previously selected window, re-located by app + title; falls back
+    /// to the picker when it is not on screen.
+    func recordSelectedWindowRemembered() {
+        if let selection = ModeMemory.usablePinned() {
+            record(.pinnedWindow(selection))
+        } else {
+            selectPinnedWindow()
+        }
+    }
+
+    /// The last display, but only while the screen arrangement is unchanged —
+    /// otherwise the stored id may now mean a different physical screen.
+    func recordFullScreenRemembered() {
+        if let displayID = ModeMemory.usableDisplay() {
+            record(.display(displayID))
+        } else {
+            pickScreen()
+        }
+    }
+
+    func pickScreen() {
+        guard phase == .idle, !isStarting, let screenPicker else { return }
+        phase = .selecting
+        screenPicker.begin(
+            onCommit: { [weak self] displayID in
+                guard let self else { return }
+                self.phase = .idle
+                self.record(.display(displayID))
+            },
+            onCancel: { [weak self] in
+                self?.phase = .idle
+            })
+    }
+
     // MARK: - Selection flows
 
     func selectRegion() {
         guard phase == .idle, !isStarting, let regionSelector else { return }
         phase = .selecting
         regionSelector.begin(
+            preload: ModeMemory.usableRegion(),
             onCommit: { [weak self] displayID, rect in
                 guard let self else { return }
                 self.phase = .idle
@@ -253,6 +298,7 @@ final class AppState: ObservableObject {
         guard phase == .selecting else { return }
         regionSelector?.dismiss()
         windowPicker?.dismiss()
+        screenPicker?.dismiss()
         phase = .idle
     }
 

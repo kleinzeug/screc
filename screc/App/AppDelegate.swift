@@ -2,11 +2,24 @@ import AppKit
 import KeyboardShortcuts
 @preconcurrency import UserNotifications
 
+/// One shortcut per capture mode. Each ships with a default; rebinding in
+/// Settings overrides it, and clearing the override restores the default.
 extension KeyboardShortcuts.Name {
-    /// ⌥⇧6 out of the box; the user can rebind it in Settings, and their
-    /// choice wins from then on.
-    static let toggleRecording = Self("toggleRecording",
-                                      default: .init(.six, modifiers: [.option, .shift]))
+    static let recordSelectedWindow = Self("recordSelectedWindow",
+                                           default: .init(.eight, modifiers: [.command, .shift]))
+    static let recordFocusedWindow = Self("recordFocusedWindow",
+                                          default: .init(.eight, modifiers: [.command, .option, .shift]))
+    static let recordFullScreen = Self("recordFullScreen",
+                                       default: .init(.nine, modifiers: [.command, .shift]))
+    static let recordRegion = Self("recordRegion",
+                                   default: .init(.nine, modifiers: [.command, .option, .shift]))
+
+    static let allRecordingShortcuts: [(name: Self, label: String)] = [
+        (.recordFocusedWindow, "Focused Window"),
+        (.recordSelectedWindow, "Selected Window"),
+        (.recordRegion, "Screen Region"),
+        (.recordFullScreen, "Full Screen"),
+    ]
 }
 
 @MainActor
@@ -18,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController!
     private var regionController: RegionSelectionController!
     private var windowPicker: WindowPickController!
+    private var screenPicker: ScreenPickController!
     private var passepartout: PassepartoutController!
     private var windowTracker: FocusedWindowTracker!
     private var pinnedTracker: PinnedWindowTracker!
@@ -31,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.regionSelector = regionController
         windowPicker = WindowPickController()
         state.windowPicker = windowPicker
+        screenPicker = ScreenPickController()
+        state.screenPicker = screenPicker
         passepartout = PassepartoutController()
         state.passepartout = passepartout
         windowTracker = FocusedWindowTracker()
@@ -46,25 +62,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         UNUserNotificationCenter.current().delegate = self
-
-        KeyboardShortcuts.onKeyUp(for: .toggleRecording) { [weak self] in
-            guard let self else { return }
-            switch self.state.phase {
-            case .recording:
-                self.state.stopRecording()
-            case .idle:
-                if self.permissions.granted {
-                    self.state.recordDefault()
-                }
-            case .selecting, .finishing:
-                break
-            }
-        }
+        registerShortcuts()
 
         let onboarded = UserDefaults.standard.bool(forKey: DefaultsKey.hasCompletedOnboarding)
         if !onboarded || !permissions.granted {
             windowManager.showOnboarding()
         }
+    }
+
+    /// While a recording runs, any of the four shortcuts stops it — the same
+    /// toggle behavior as clicking the status item.
+    private func registerShortcuts() {
+        func bind(_ name: KeyboardShortcuts.Name, _ action: @escaping (AppState) -> Void) {
+            KeyboardShortcuts.onKeyUp(for: name) { [weak self] in
+                guard let self, self.permissions.granted else { return }
+                if self.state.phase == .recording {
+                    self.state.stopRecording()
+                } else if self.state.phase == .idle {
+                    action(self.state)
+                }
+            }
+        }
+        bind(.recordFocusedWindow) { $0.record(.focusedWindow) }
+        bind(.recordSelectedWindow) { $0.recordSelectedWindowRemembered() }
+        bind(.recordRegion) { $0.recordRegionRemembered() }
+        bind(.recordFullScreen) { $0.recordFullScreenRemembered() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

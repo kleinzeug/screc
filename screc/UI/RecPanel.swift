@@ -12,7 +12,10 @@ enum RecPanel {
         let content = RecPanelView(width: width, height: height,
                                    onRecord: onRecord, onCancel: onCancel)
         let hostingView = NSHostingView(rootView: content)
-        let size = hostingView.fittingSize
+        var size = hostingView.fittingSize
+        // fittingSize can under-measure the capsule's padding; give the
+        // readout room rather than letting it truncate.
+        size.width = max(size.width, hostingView.intrinsicContentSize.width) + 4
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
@@ -30,16 +33,25 @@ enum RecPanel {
         return panel
     }
 
-    /// Below the target rect, clamped to the screen; inside it if no room.
+    /// Sits just below the target rect. When the rect reaches too close to
+    /// the bottom of the screen, the bar moves *inside* it — hugging the
+    /// inner edge of the same bottom border — instead of going off-screen.
     static func position(_ panel: NSPanel, below globalRect: NSRect, on screen: NSScreen) {
         let size = panel.frame.size
+        let gap: CGFloat = 12
         var origin = NSPoint(x: globalRect.midX - size.width / 2,
-                             y: globalRect.minY - size.height - 12)
-        if origin.y < screen.visibleFrame.minY {
-            origin.y = globalRect.minY + 12
+                             y: globalRect.minY - size.height - gap)
+
+        if origin.y < screen.frame.minY + 8 {
+            let inside = globalRect.minY + gap
+            // Only park inside if the rect is actually tall enough to hold it.
+            origin.y = globalRect.height > size.height + 2 * gap
+                ? inside
+                : max(globalRect.maxY + gap, screen.frame.minY + 8)
         }
-        origin.x = min(max(origin.x, screen.visibleFrame.minX + 8),
-                       screen.visibleFrame.maxX - size.width - 8)
+        origin.x = min(max(origin.x, screen.frame.minX + 8),
+                       screen.frame.maxX - size.width - 8)
+        origin.y = min(origin.y, screen.frame.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
     }
@@ -63,6 +75,8 @@ private struct RecPanelView: View {
             Text("\(width) × \(height)")
                 .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
 
             Button(action: onRecord) {
                 HStack(spacing: 5) {
@@ -74,8 +88,9 @@ private struct RecPanelView: View {
             .tint(.red)
             .help("Start recording (Enter)")
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .fixedSize()
         .background(.regularMaterial, in: Capsule())
     }
 }

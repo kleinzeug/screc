@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 
 /// The menu-bar shell. A raw NSStatusItem (SwiftUI's MenuBarExtra cannot
 /// distinguish click buttons nor render 9 pt stats text):
@@ -254,20 +255,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(item("Cancel Selection", action: #selector(cancelSelection)))
         case .idle:
             menu.addItem(NSMenuItem.sectionHeader(title: "Start Recording"))
-            // The checkmark marks the right-click default (last-used mode).
-            let front = item("Focused Window", action: #selector(recordFocused))
-            front.isEnabled = permissions.granted
-            front.state = state.defaultMode == .window ? .on : .off
-            menu.addItem(front)
-            let pinned = item("Selected Window", action: #selector(recordPinned))
-            pinned.isEnabled = permissions.granted
-            if case .pinned = state.defaultMode { pinned.state = .on }
-            menu.addItem(pinned)
-            let region = item("Screen Region", action: #selector(recordRegion))
-            region.isEnabled = permissions.granted
-            if case .region = state.defaultMode { region.state = .on }
-            menu.addItem(region)
-            menu.addItem(fullScreenItem())
+            // Each mode gets a plain entry (ask me) and an ⌥ alternate that
+            // reuses what the mode last recorded. The checkmark marks the
+            // mode the primary click and the status item repeat.
+            addModeItems(to: menu)
         }
 
         store.validate()
@@ -312,33 +303,95 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return menu
     }
 
-    private func fullScreenItem() -> NSMenuItem {
-        let defaultDisplayID: CGDirectDisplayID? = {
-            if case .display(let id) = state.defaultMode { return id }
-            return nil
-        }()
+    /// Adds the four modes, each with an ⌥ alternate that starts from the
+    /// remembered configuration instead of opening a picker.
+    private func addModeItems(to menu: NSMenu) {
+        func add(title: String,
+                 altTitle: String,
+                 action: Selector,
+                 altAction: Selector,
+                 shortcut: KeyboardShortcuts.Name,
+                 isDefault: Bool,
+                 altAvailable: Bool) {
+            let main = item(title, action: action)
+            main.isEnabled = permissions.granted
+            main.state = isDefault ? .on : .off
+            main.setShortcut(for: shortcut)
+            menu.addItem(main)
+
+            let alt = item(altAvailable ? altTitle : "\(title) — nothing remembered yet",
+                           action: altAvailable ? altAction : nil)
+            alt.isEnabled = permissions.granted && altAvailable
+            alt.state = isDefault ? .on : .off
+            alt.isAlternate = true
+            alt.keyEquivalentModifierMask = [.option]
+            menu.addItem(alt)
+        }
+
+        var isWindowDefault = false, isPinnedDefault = false
+        var isRegionDefault = false, isDisplayDefault = false
+        switch state.defaultMode {
+        case .window: isWindowDefault = true
+        case .pinned: isPinnedDefault = true
+        case .region: isRegionDefault = true
+        case .display: isDisplayDefault = true
+        }
+
+        add(title: "Focused Window",
+            altTitle: "Focused Window — right now",
+            action: #selector(recordFocused), altAction: #selector(recordFocused),
+            shortcut: .recordFocusedWindow, isDefault: isWindowDefault,
+            altAvailable: true)
+
+        add(title: "Selected Window…",
+            altTitle: "Selected Window — last one",
+            action: #selector(recordPinned), altAction: #selector(recordPinnedRemembered),
+            shortcut: .recordSelectedWindow, isDefault: isPinnedDefault,
+            altAvailable: ModeMemory.pinned != nil)
+
+        add(title: "Screen Region…",
+            altTitle: "Screen Region — last one",
+            action: #selector(recordRegion), altAction: #selector(recordRegionRemembered),
+            shortcut: .recordRegion, isDefault: isRegionDefault,
+            altAvailable: ModeMemory.usableRegion() != nil)
+
         let screens = NSScreen.screens
         if screens.count <= 1 {
-            let single = item("Full Screen", action: #selector(recordDisplay(_:)))
-            single.tag = Int(screens.first?.displayID ?? CGMainDisplayID())
-            single.isEnabled = permissions.granted
-            single.state = defaultDisplayID != nil ? .on : .off
-            return single
+            add(title: "Full Screen",
+                altTitle: "Full Screen — last screen",
+                action: #selector(recordMainScreen),
+                altAction: #selector(recordFullScreenRemembered),
+                shortcut: .recordFullScreen, isDefault: isDisplayDefault,
+                altAvailable: ModeMemory.usableDisplay() != nil)
+        } else {
+            let parent = item("Full Screen", action: nil)
+            parent.isEnabled = permissions.granted
+            parent.state = isDisplayDefault ? .on : .off
+            parent.setShortcut(for: .recordFullScreen)
+            let submenu = NSMenu()
+            submenu.autoenablesItems = false
+            let defaultDisplayID: CGDirectDisplayID? = {
+                if case .display(let id) = state.defaultMode { return id }
+                return nil
+            }()
+            for screen in screens {
+                let entry = item(screen.localizedName, action: #selector(recordDisplay(_:)))
+                entry.tag = Int(screen.displayID)
+                entry.isEnabled = permissions.granted
+                entry.state = defaultDisplayID == screen.displayID ? .on : .off
+                submenu.addItem(entry)
+            }
+            parent.submenu = submenu
+            menu.addItem(parent)
+
+            let alt = item("Full Screen — last screen",
+                           action: #selector(recordFullScreenRemembered))
+            alt.isEnabled = permissions.granted && ModeMemory.usableDisplay() != nil
+            alt.state = isDisplayDefault ? .on : .off
+            alt.isAlternate = true
+            alt.keyEquivalentModifierMask = [.option]
+            menu.addItem(alt)
         }
-        let parent = item("Full Screen", action: nil)
-        parent.isEnabled = permissions.granted
-        parent.state = defaultDisplayID != nil ? .on : .off
-        let submenu = NSMenu()
-        submenu.autoenablesItems = false
-        for screen in screens {
-            let entry = item(screen.localizedName, action: #selector(recordDisplay(_:)))
-            entry.tag = Int(screen.displayID)
-            entry.isEnabled = permissions.granted
-            entry.state = defaultDisplayID == screen.displayID ? .on : .off
-            submenu.addItem(entry)
-        }
-        parent.submenu = submenu
-        return parent
     }
 
     private func item(_ title: String, action: Selector?, key: String = "") -> NSMenuItem {
@@ -358,6 +411,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func recordRegion() { state.selectRegion() }
+
+    @objc private func recordMainScreen() { state.recordFullScreenRemembered() }
+    @objc private func recordRegionRemembered() { state.recordRegionRemembered() }
+    @objc private func recordPinnedRemembered() { state.recordSelectedWindowRemembered() }
+    @objc private func recordFullScreenRemembered() { state.recordFullScreenRemembered() }
 
     @objc private func cancelSelection() { state.cancelSelection() }
 

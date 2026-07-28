@@ -20,7 +20,10 @@ final class RegionSelectionController {
     private var onCommit: ((CGDirectDisplayID, CGRect) -> Void)?
     private var onCancel: (() -> Void)?
 
-    func begin(onCommit: @escaping (CGDirectDisplayID, CGRect) -> Void,
+    /// `preload` is a display-local, top-left-origin rect (sourceRect
+    /// convention) to reopen with — the region the mode last recorded.
+    func begin(preload: (CGDirectDisplayID, CGRect)? = nil,
+               onCommit: @escaping (CGDirectDisplayID, CGRect) -> Void,
                onCancel: @escaping () -> Void) {
         dismiss()
         self.onCommit = onCommit
@@ -38,6 +41,15 @@ final class RegionSelectionController {
             }
             window.selectionView.onCommit = { [weak self] in self?.commit() }
             window.selectionView.onCancel = { [weak self] in self?.cancel() }
+            // Reopen on the remembered rect (converted back to AppKit's
+            // bottom-left origin) so it can simply be confirmed or nudged.
+            if let preload, preload.0 == screen.displayID {
+                let local = NSRect(x: preload.1.minX,
+                                   y: screen.frame.height - preload.1.maxY,
+                                   width: preload.1.width, height: preload.1.height)
+                window.selectionView.setSelection(local)
+                currentSelection = (screen, local)
+            }
             windows.append(window)
         }
         // The overlay needs key status for Esc/Enter; accessory apps can
@@ -50,6 +62,9 @@ final class RegionSelectionController {
             } else {
                 window.orderFrontRegardless()
             }
+        }
+        if let (screen, rect) = currentSelection {
+            showRecPanel(for: rect, on: screen)
         }
     }
 
@@ -166,6 +181,42 @@ private final class SelectionView: NSView {
     private var isDragging: Bool { creationStart != nil || adjustDrag != nil }
 
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    func setSelection(_ rect: NSRect) {
+        selection = rect
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseMoved, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    /// Cursor follows what a drag would do at this point: resize on the
+    /// edges and corners, move inside, crosshair everywhere else.
+    override func mouseMoved(with event: NSEvent) {
+        guard !isDragging else { return }
+        cursor(for: convert(event.locationInWindow, from: nil)).set()
+    }
+
+    private func cursor(for point: NSPoint) -> NSCursor {
+        guard let selection, let mode = RectDrag.hitTest(point: point, rect: selection)
+        else { return .crosshair }
+        switch mode {
+        case .move:
+            return .openHand
+        case .resize(let ex, let ey):
+            if ex != 0 && ey != 0 {
+                // Diagonals: drawn, because AppKit exposes no public
+                // diagonal resize cursor.
+                return (ex == ey) ? RegionCursors.diagonalUp : RegionCursors.diagonalDown
+            }
+            return ex != 0 ? .resizeLeftRight : .resizeUpDown
+    }
+    }
 
     func clearSelection() {
         selection = nil
@@ -175,7 +226,9 @@ private final class SelectionView: NSView {
     }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .crosshair)
+        if selection == nil {
+            addCursorRect(bounds, cursor: .crosshair)
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -183,6 +236,7 @@ private final class SelectionView: NSView {
         onDragBegan?()
         if let selection, let mode = RectDrag.hitTest(point: point, rect: selection) {
             adjustDrag = RectDrag(mode: mode, startRect: selection, startPoint: point)
+            if case .move = mode { NSCursor.closedHand.set() }
         } else {
             // Outside the existing selection: start a fresh one.
             creationStart = point
@@ -234,7 +288,11 @@ private final class SelectionView: NSView {
             return
         }
         guard let rect = selection, rect.width >= 10, rect.height >= 10 else {
-            selection = nil // too small — treat as a stray click, keep selecting
+            // A click rather than a drag: start from the whole screen, which
+            // can then be resized down.
+            let whole = bounds.integral
+            selection = whole
+            onSelectionChanged?(whole)
             return
         }
         onSelectionChanged?(rect)
@@ -295,5 +353,58 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.5).setFill()
         NSBezierPath(roundedRect: background, xRadius: 8, yRadius: 8).fill()
         text.draw(at: origin, withAttributes: attributes)
+    }
+}
+
+// MARK: - Drawn cursors
+
+/// AppKit ships no public diagonal resize cursor, so draw the two
+/// double-headed arrows once and reuse them.
+@MainActor
+enum RegionCursors {
+    static let diagonalUp = arrow(radians: -.pi / 4)    // ↗↙  (NE–SW)
+    static let diagonalDown = arrow(radians: .pi / 4)   // ↘↖  (NW–SE)
+
+    private static func arrow(radians: CGFloat) -> NSCursor {
+        let size = NSSize(width: 24, height: 24)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let ctx = NSGraphicsContext.current!.cgContext
+            ctx.translateBy(x: rect.midX, y: rect.midY)
+            ctx.rotate(by: radians)
+
+            let shaft = NSBezierPath()
+            shaft.move(to: NSPoint(x: -6.5, y: 0))
+            shaft.line(to: NSPoint(x: 6.5, y: 0))
+            shaft.lineWidth = 2.5
+            shaft.lineCapStyle = .round
+
+            let heads = NSBezierPath()
+            for direction in [CGFloat(1), -1] {
+                let tip = NSPoint(x: 9.5 * direction, y: 0)
+                heads.move(to: tip)
+                heads.line(to: NSPoint(x: tip.x - 4.5 * direction, y: 3.6))
+                heads.line(to: NSPoint(x: tip.x - 4.5 * direction, y: -3.6))
+                heads.close()
+            }
+
+            // White casing keeps it visible over any content.
+            NSColor.white.setStroke()
+            let outline = shaft.copy() as! NSBezierPath
+            outline.lineWidth = 5
+            outline.stroke()
+            NSColor.white.setFill()
+            let headOutline = heads.copy() as! NSBezierPath
+            NSColor.white.setStroke()
+            headOutline.lineWidth = 3.5
+            headOutline.lineJoinStyle = .round
+            headOutline.stroke()
+
+            NSColor.black.setStroke()
+            shaft.stroke()
+            NSColor.black.setFill()
+            heads.fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: 12, y: 12))
     }
 }

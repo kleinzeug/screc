@@ -367,9 +367,17 @@ struct SettingsView: View {
             }
 
             Section("General") {
-                KeyboardShortcuts.Recorder("Start/stop recording", name: .toggleRecording)
                 Toggle("Launch at login", isOn: launchAtLoginBinding)
                 Toggle("Notify when a recording is saved", isOn: $notifyOnFinish)
+            }
+
+            Section("Hotkeys") {
+                ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
+                    ShortcutRow(name: entry.name, label: entry.label)
+                }
+                Text("Each hotkey starts that mode with what it last recorded, and stops a running recording. Hover a shortcut to clear it back to the default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("About") {
@@ -528,6 +536,46 @@ struct SettingsView: View {
                     config.videoBitrateKbps = value
                 }
             })
+    }
+}
+
+// MARK: - Hotkey row
+
+/// A shortcut recorder plus an (x) that appears on hover once the shortcut
+/// differs from its built-in default; clearing restores that default.
+private struct ShortcutRow: View {
+    let name: KeyboardShortcuts.Name
+    let label: String
+    @State private var hovering = false
+    @State private var revision = 0
+
+    private var isCustom: Bool {
+        _ = revision // re-read after a change
+        return KeyboardShortcuts.getShortcut(for: name) != name.defaultShortcut
+    }
+
+    var body: some View {
+        LabeledContent(label) {
+            HStack(spacing: 6) {
+                if isCustom && hovering {
+                    Button {
+                        KeyboardShortcuts.reset(name)
+                        revision += 1
+                    } label: {
+                        Image(systemName: "x.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Reset to the default shortcut")
+                } else if isCustom {
+                    // Keeps the row from shifting when the button appears.
+                    Image(systemName: "x.circle.fill").opacity(0)
+                }
+                KeyboardShortcuts.Recorder("", name: name)
+                    .onChange(of: hovering) { _, _ in revision += 1 }
+            }
+        }
+        .onHover { hovering = $0 }
     }
 }
 
