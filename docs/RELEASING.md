@@ -22,16 +22,20 @@ Certificates…** → **+** and create both:
 Note the **Team ID** (Xcode shows it next to the team name; it also appears
 at developer.apple.com → Membership).
 
-### 2. Point the project at the team
+### 2. Point the build at your team
 
-In `project.yml`, under the target's `settings.base`:
+Account information stays out of the repository. Copy the example and fill
+in your team id — the file is gitignored:
 
-```yaml
-DEVELOPMENT_TEAM: YOURTEAMID
+```sh
+cp Config/local.xcconfig.example Config/local.xcconfig
+$EDITOR Config/local.xcconfig      # DEVELOPMENT_TEAM = YOURTEAMID
+xcodegen generate
 ```
 
-and delete the `CODE_SIGN_IDENTITY: "-"` line, so Debug builds use the
-Apple Development certificate. Then `xcodegen generate`.
+`Config/signing.xcconfig` includes it optionally, so a clone without it
+still builds (ad-hoc). `tools/release.sh` reads the team id from the same
+file.
 
 ### 3. Notarization credentials
 

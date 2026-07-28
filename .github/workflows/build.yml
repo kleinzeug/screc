@@ -35,8 +35,9 @@ jobs:
         run: xcodegen generate
 
       - name: Build (Release)
-        # Ad-hoc signed: the runner has no access to the team's certificates,
-        # and a clean clone must build for contributors on any account.
+        # No signing overrides: Config/signing.xcconfig defaults to ad-hoc and
+        # Config/local.xcconfig is untracked, so this is exactly what a
+        # contributor's clean clone builds.
         run: |
           set -o pipefail
           xcodebuild \
@@ -44,9 +45,6 @@ jobs:
             -scheme screc \
             -configuration Release \
             -derivedDataPath build \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="-" \
-            DEVELOPMENT_TEAM="" \
             build
 
       - name: Verify app bundle

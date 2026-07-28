@@ -92,37 +92,26 @@ If the menu-bar icon shows a hollow dot, permission is still missing. Enable
 ***screc*** under **System Settings → Privacy & Security → Screen & System Audio
 Recording** and relaunch.
 
-### Building without this team
+### Signing
 
-`project.yml` names the maintainer's `DEVELOPMENT_TEAM`, which your account
-cannot sign with. Build ad-hoc instead — this is exactly what CI does:
+A clean clone builds **ad-hoc signed** — no Apple account needed, which is
+what CI does too. `Config/signing.xcconfig` holds those defaults and
+optionally includes `Config/local.xcconfig`, which is gitignored and where
+your own identity goes:
 
 ```sh
-xcodebuild -project screc.xcodeproj -scheme screc \
-           CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" \
-           build
+cp Config/local.xcconfig.example Config/local.xcconfig
+# then set DEVELOPMENT_TEAM to your team id and re-run xcodegen generate
 ```
 
-Or put your own team id in `project.yml` and re-run `xcodegen generate` —
-worth it if you iterate, for the reason below.
+Worth doing if you iterate: macOS ties the screen-recording permission to
+the **code-signing identity**, so ad-hoc builds — which get a fresh identity
+every rebuild — are re-prompted for permission each time, and Sequoia is
+unreliable about granting ScreenCaptureKit access to them at all. A stable
+signing identity keeps the grant.
 
-### Signing note (worth two minutes)
-
-macOS ties the screen-recording permission to the app's **code-signing
-identity**. This project defaults to ad-hoc signing so it builds with zero
-setup — but ad-hoc builds get a fresh identity on every rebuild, so macOS
-re-prompts for permission each time, and Sequoia is unreliable about granting
-ScreenCaptureKit access to them at all.
-
-For anything beyond a single test build, sign into Xcode (Settings → Accounts —
-a free Apple ID is enough), then in `project.yml`:
-
-```yaml
-DEVELOPMENT_TEAM: YOURTEAMID     # add this
-# CODE_SIGN_IDENTITY: "-"        # delete this line
-```
-
-Then re-run `xcodegen generate`. The permission grant will now survive rebuilds.
+(No account information is committed to this repository; releases are signed
+locally — see [docs/RELEASING.md](docs/RELEASING.md).)
 
 ### Versioning
 

@@ -1,0 +1,11 @@
+// Signing defaults. Committed, and deliberately free of any account
+// information: without a local override this builds ad-hoc, which is what
+// CI and contributors need.
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+// Optional include (note the "?"): silently skipped when absent. Put your
+// own DEVELOPMENT_TEAM in Config/local.xcconfig — it is gitignored, and
+// values here override the defaults above.
+#include? "local.xcconfig"

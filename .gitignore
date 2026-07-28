@@ -11,3 +11,6 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Local signing identity — never commit account information.
+Config/local.xcconfig
