@@ -295,7 +295,19 @@ private final class PickView: NSView {
     // MARK: Mouse
 
     override func mouseMoved(with event: NSEvent) {
-        controller?.hoverMoved()
+        guard let controller else { return }
+        if controller.isAdjusting, let rectGlobal = controller.adjustRect() {
+            let point = convert(event.locationInWindow, from: nil)
+            switch RectDrag.hitTest(point: point, rect: toLocal(rectGlobal)) {
+            case .move: NSCursor.openHand.set()
+            case .resize(let ex, let ey) where ex != 0 && ey != 0:
+                RegionCursors.corner(ex: ex, ey: ey).set()
+            case .resize(let ex, _): (ex != 0 ? NSCursor.resizeLeftRight : .resizeUpDown).set()
+            case nil: NSCursor.arrow.set()
+            }
+            return
+        }
+        controller.hoverMoved()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -362,6 +374,10 @@ private final class PickView: NSView {
             else { return }
             NSColor.clear.setFill()
             rect.fill(using: .copy)
+            // Fully transparent pixels let clicks through the window, which
+            // would break dragging the capture rect — keep a trace of alpha.
+            NSColor.white.withAlphaComponent(0.005).setFill()
+            rect.fill()
             NSColor.white.withAlphaComponent(0.9).setStroke()
             let border = NSBezierPath(rect: rect.insetBy(dx: -0.75, dy: -0.75))
             border.lineWidth = 1.5

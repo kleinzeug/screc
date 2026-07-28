@@ -19,15 +19,20 @@ final class RegionSelectionController {
     private var currentSelection: (screen: NSScreen, rect: NSRect)?
     private var onCommit: ((CGDirectDisplayID, CGRect) -> Void)?
     private var onCancel: (() -> Void)?
+    /// Fired whenever the rect changes, so the region survives a cancelled
+    /// pick — you drew it, so it is remembered either way.
+    private var onRegionChanged: ((CGDirectDisplayID, CGRect) -> Void)?
 
     /// `preload` is a display-local, top-left-origin rect (sourceRect
     /// convention) to reopen with — the region the mode last recorded.
     func begin(preload: (CGDirectDisplayID, CGRect)? = nil,
+               onRegionChanged: @escaping (CGDirectDisplayID, CGRect) -> Void = { _, _ in },
                onCommit: @escaping (CGDirectDisplayID, CGRect) -> Void,
                onCancel: @escaping () -> Void) {
         dismiss()
         self.onCommit = onCommit
         self.onCancel = onCancel
+        self.onRegionChanged = onRegionChanged
 
         let forcedAspect = PresetLibrary.currentConfig.aspectValue
         for screen in NSScreen.screens {
@@ -76,6 +81,7 @@ final class RegionSelectionController {
         currentSelection = nil
         onCommit = nil
         onCancel = nil
+        onRegionChanged = nil
     }
 
     // MARK: - Selection flow
@@ -93,7 +99,14 @@ final class RegionSelectionController {
     /// adjustment.
     private func selectionChanged(on screen: NSScreen, rect: NSRect) {
         currentSelection = (screen, rect)
+        onRegionChanged?(screen.displayID, Self.displayLocal(rect, on: screen))
         showRecPanel(for: rect, on: screen)
+    }
+
+    /// AppKit bottom-left origin → SCK top-left origin, display-local.
+    private static func displayLocal(_ rect: NSRect, on screen: NSScreen) -> CGRect {
+        CGRect(x: rect.minX, y: screen.frame.height - rect.maxY,
+               width: rect.width, height: rect.height)
     }
 
     private func commit() {
@@ -210,9 +223,7 @@ private final class SelectionView: NSView {
             return .openHand
         case .resize(let ex, let ey):
             if ex != 0 && ey != 0 {
-                // Diagonals: drawn, because AppKit exposes no public
-                // diagonal resize cursor.
-                return (ex == ey) ? RegionCursors.diagonalUp : RegionCursors.diagonalDown
+                return RegionCursors.corner(ex: ex, ey: ey)
             }
             return ex != 0 ? .resizeLeftRight : .resizeUpDown
     }
@@ -317,9 +328,15 @@ private final class SelectionView: NSView {
             drawHint()
             return
         }
-        // Punch the selection out of the dim layer.
+        // Punch the selection out of the dim layer, then lay an almost
+        // invisible film back over it: a fully transparent pixel makes the
+        // window pass clicks through to whatever is behind, so dragging
+        // inside the region would hit the app underneath instead of moving
+        // the region.
         NSColor.clear.setFill()
         rect.fill(using: .copy)
+        NSColor.white.withAlphaComponent(0.005).setFill()
+        rect.fill()
 
         NSColor.white.withAlphaComponent(0.9).setStroke()
         let border = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
@@ -358,53 +375,51 @@ private final class SelectionView: NSView {
 
 // MARK: - Drawn cursors
 
-/// AppKit ships no public diagonal resize cursor, so draw the two
-/// double-headed arrows once and reuse them.
+/// AppKit ships no public corner-resize cursor, so draw L-shaped corner
+/// brackets — one per corner, oriented like the corner it grabs.
 @MainActor
 enum RegionCursors {
-    static let diagonalUp = arrow(radians: -.pi / 4)    // ↗↙  (NE–SW)
-    static let diagonalDown = arrow(radians: .pi / 4)   // ↘↖  (NW–SE)
+    static let bottomLeft = corner(dx: -1, dy: -1)
+    static let bottomRight = corner(dx: 1, dy: -1)
+    static let topLeft = corner(dx: -1, dy: 1)
+    static let topRight = corner(dx: 1, dy: 1)
 
-    private static func arrow(radians: CGFloat) -> NSCursor {
-        let size = NSSize(width: 24, height: 24)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let ctx = NSGraphicsContext.current!.cgContext
-            ctx.translateBy(x: rect.midX, y: rect.midY)
-            ctx.rotate(by: radians)
+    static func corner(ex: Int, ey: Int) -> NSCursor {
+        switch (ex, ey) {
+        case (-1, -1): return bottomLeft
+        case (1, -1): return bottomRight
+        case (-1, 1): return topLeft
+        default: return topRight
+        }
+    }
 
-            let shaft = NSBezierPath()
-            shaft.move(to: NSPoint(x: -6.5, y: 0))
-            shaft.line(to: NSPoint(x: 6.5, y: 0))
-            shaft.lineWidth = 2.5
-            shaft.lineCapStyle = .round
+    /// `dx`/`dy` point at the corner being grabbed, in AppKit's
+    /// bottom-left-origin space; the bracket's arms run back inward.
+    private static func corner(dx: CGFloat, dy: CGFloat) -> NSCursor {
+        let side: CGFloat = 24
+        let image = NSImage(size: NSSize(width: side, height: side),
+                            flipped: false) { rect in
+            let cx = rect.midX, cy = rect.midY
+            let out: CGFloat = 6   // how far the vertex sits from centre
+            let arm: CGFloat = 11  // arm length, running inward
 
-            let heads = NSBezierPath()
-            for direction in [CGFloat(1), -1] {
-                let tip = NSPoint(x: 9.5 * direction, y: 0)
-                heads.move(to: tip)
-                heads.line(to: NSPoint(x: tip.x - 4.5 * direction, y: 3.6))
-                heads.line(to: NSPoint(x: tip.x - 4.5 * direction, y: -3.6))
-                heads.close()
-            }
+            let vertex = NSPoint(x: cx + dx * out, y: cy + dy * out)
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: vertex.x - dx * arm, y: vertex.y))
+            path.line(to: vertex)
+            path.line(to: NSPoint(x: vertex.x, y: vertex.y - dy * arm))
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
 
-            // White casing keeps it visible over any content.
+            // White casing so it stays visible over any content.
             NSColor.white.setStroke()
-            let outline = shaft.copy() as! NSBezierPath
-            outline.lineWidth = 5
-            outline.stroke()
-            NSColor.white.setFill()
-            let headOutline = heads.copy() as! NSBezierPath
-            NSColor.white.setStroke()
-            headOutline.lineWidth = 3.5
-            headOutline.lineJoinStyle = .round
-            headOutline.stroke()
-
+            path.lineWidth = 6
+            path.stroke()
             NSColor.black.setStroke()
-            shaft.stroke()
-            NSColor.black.setFill()
-            heads.fill()
+            path.lineWidth = 2.6
+            path.stroke()
             return true
         }
-        return NSCursor(image: image, hotSpot: NSPoint(x: 12, y: 12))
+        return NSCursor(image: image, hotSpot: NSPoint(x: side / 2, y: side / 2))
     }
 }

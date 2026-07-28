@@ -270,6 +270,11 @@ final class AppState: ObservableObject {
         phase = .selecting
         regionSelector.begin(
             preload: ModeMemory.usableRegion(),
+            onRegionChanged: { displayID, rect in
+                // Remember as soon as it is drawn: cancelling the pick still
+                // leaves the region configured for next time.
+                ModeMemory.rememberRegion(display: displayID, rect: rect)
+            },
             onCommit: { [weak self] displayID, rect in
                 guard let self else { return }
                 self.phase = .idle
