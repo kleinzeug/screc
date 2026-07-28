@@ -297,6 +297,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 alternate.keyEquivalentModifierMask = [.option]
                 if !isGIF { alternate.isEnabled = state.phase == .idle }
                 menu.addItem(alternate)
+
+                // ⌘ reveals the file instead of opening it. A second
+                // alternate is fine: these rows share an empty key
+                // equivalent, so AppKit pairs them by modifier mask.
+                let reveal = item("Reveal in Finder  ·  \(recording.name)",
+                                  action: #selector(revealRecording(_:)))
+                reveal.representedObject = recording.url
+                reveal.isAlternate = true
+                reveal.keyEquivalentModifierMask = [.command]
+                menu.addItem(reveal)
             }
             let freed = ByteCountFormatter.string(fromByteCount: store.totalBytes,
                                                   countStyle: .file)
@@ -469,12 +479,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openRecording(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        RecordingOpener.open(url)
+        if NSEvent.modifierFlags.contains(.command) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            RecordingOpener.open(url)
+        }
     }
 
     @objc private func convertRecording(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         state.convertToGIF(url)
+    }
+
+    @objc private func revealRecording(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     @objc private func editRecording(_ sender: NSMenuItem) {
