@@ -549,16 +549,23 @@ differentiate on convenience, not limits.
   in-app GIF frame-strip editor (⌥ recents entry → thumbnail grid, click to
   mark frames, atomic in-place rewrite preserving delays/loop — verified:
   36 → 18 frames round-trip). Version 0.2.0.
-- **M7 — public presentation** (pulled AHEAD of M5 by design: the decision to
-  pay for a developer account depends on the app presenting convincingly):
+- **M7 — public presentation** ✅ (2026-07-27, pulled ahead of M5 by design:
+  the decision to pay for a developer account depended on the app presenting
+  convincingly):
   landing page (site/index.html — self-contained, brand colors sampled from
   the icon, drawn menu-bar hero, live stats ticker, dual-theme), App Store
   asset checklist (screenshots 2880×1800/2560×1600/1440×900/1280×800, 1024
   icon ✅, description, keywords, privacy labels), and the identity decisions:
   final app name (see §9 collisions), public author vs. team/label name,
   domain (screc.app looked unregistered), support e-mail, pricing.
-- **M5 — Developer ID release**: notarization pipeline (CI or script), Sparkle,
-  name decision.
+- **M5 — Developer ID release** (in progress, 2026-07-28): signing and export
+  verified end to end — Developer ID certificate, hardened runtime, secure
+  timestamp; `tools/release.sh` archives → exports → notarizes → staples →
+  Gatekeeper-checks → packages, documented in docs/RELEASING.md. Account
+  information is kept out of the repository via an optional-include xcconfig.
+  Outstanding: notarytool credentials (needs an app-specific password), the
+  first notarized build, and auto-updates (Sparkle) before there are users to
+  strand.
 - **M6 — Mac App Store**: sandbox storage variant, bookmark-based custom
   folders, review prep (2.5.14 consent copy), TestFlight beta, listing
   (screenshots, ASO against the subscription-trap field).

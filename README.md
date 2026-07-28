@@ -38,15 +38,17 @@ Output is live-encoded H.264/HEVC at your target bitrate, or GIF (auto-converted
 on stop, with an in-app frame editor for trimming frames). Recordings land in
 `/tmp/screc` by default, so they clean themselves up on reboot.
 
-See [DESIGN.md](DESIGN.md) for the architecture, the research behind it, and the
-milestone plan. Current state: **M4** — feature-complete and in daily use.
-Next: notarized Developer ID build (M5), then a Mac App Store variant (M6).
+See [DESIGN.md](DESIGN.md) for the architecture and the research behind it,
+and [CHANGELOG.md](CHANGELOG.md) for what each release contains.
 
 ## Getting ***screc***
 
 **Build it yourself.** That is the primary way to get ***screc***, it is free, and it
 stays free — the source here is complete, with no crippled features and no
 paywalled build. Instructions below.
+
+**Or download a build**: notarized, signed, opens without Gatekeeper
+warnings — see [Releases](https://github.com/kleinzeug/screc/releases).
 
 **Or buy it** (planned): a Mac App Store release for a small one-time price,
 for people who would rather not touch a compiler. Never a subscription. Nobody
