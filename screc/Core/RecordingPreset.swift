@@ -178,14 +178,21 @@ struct RecordingPresetDef: Codable, Equatable, Identifiable {
 }
 
 enum PresetLibrary {
-    static let videoBuiltins: [RecordingPresetDef] = [
+    // Split by codec so the settings picker can put dividers between the
+    // H.264, HEVC and GIF groups.
+    static let mp4Builtins: [RecordingPresetDef] = [
         .init(id: "builtin.tiny-mp4", name: "Tiny MP4", config: .tinyMP4),
         .init(id: "builtin.small-mp4", name: "Small MP4", config: .smallMP4),
         .init(id: "builtin.medium-mp4", name: "Medium MP4", config: .mediumMP4),
         .init(id: "builtin.large-mp4", name: "Large MP4", config: .largeMP4),
+    ]
+
+    static let hevcBuiltins: [RecordingPresetDef] = [
         .init(id: "builtin.compact-hevc", name: "Compact HEVC", config: .compactHEVC),
         .init(id: "builtin.master-hevc", name: "Master HEVC (native)", config: .masterHEVC),
     ]
+
+    static let videoBuiltins: [RecordingPresetDef] = mp4Builtins + hevcBuiltins
 
     static let gifBuiltins: [RecordingPresetDef] = [
         .init(id: "builtin.gif-small", name: "GIF Small", config: .gifSmall),

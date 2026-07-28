@@ -425,7 +425,11 @@ struct SettingsView: View {
 
     private var presetPicker: some View {
         Picker("", selection: presetSelection) {
-            ForEach(PresetLibrary.videoBuiltins) { preset in
+            ForEach(PresetLibrary.mp4Builtins) { preset in
+                Text(preset.name).tag(preset.id)
+            }
+            Divider()
+            ForEach(PresetLibrary.hevcBuiltins) { preset in
                 Text(preset.name).tag(preset.id)
             }
             Divider()
