@@ -256,7 +256,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         switch state.phase {
         case .recording:
-            menu.addItem(item("Stop Recording", action: #selector(stopFromMenu)))
+            let stop = item("Stop Recording", action: #selector(stopFromMenu))
+            stop.setShortcut(for: .stopRecording)
+            menu.addItem(stop)
         case .finishing:
             let saving = item(state.finishingLabel.capitalized, action: nil)
             saving.isEnabled = false

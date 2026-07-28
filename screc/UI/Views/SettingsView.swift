@@ -382,7 +382,7 @@ struct SettingsView: View {
                 ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
                     ShortcutRow(name: entry.name, label: entry.label)
                 }
-                Text("Each hotkey starts that mode with what it last recorded, and stops a running recording. Hover a shortcut to clear it back to the default.")
+                Text("Each mode hotkey starts that mode with what it last recorded; any of them also stops a running recording. Hover a shortcut to clear it back to the default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

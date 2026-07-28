@@ -13,12 +13,16 @@ extension KeyboardShortcuts.Name {
                                        default: .init(.nine, modifiers: [.command, .shift]))
     static let recordRegion = Self("recordRegion",
                                    default: .init(.nine, modifiers: [.command, .option, .shift]))
+    /// Completes the row: 8 starts window modes, 9 area modes, 0 stops.
+    static let stopRecording = Self("stopRecording",
+                                    default: .init(.zero, modifiers: [.command, .shift]))
 
     static let allRecordingShortcuts: [(name: Self, label: String)] = [
         (.recordFocusedWindow, "Focused Window"),
         (.recordSelectedWindow, "Selected Window"),
         (.recordRegion, "Screen Region"),
         (.recordFullScreen, "Full Screen"),
+        (.stopRecording, "Stop recording"),
     ]
 }
 
@@ -87,6 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bind(.recordSelectedWindow) { $0.recordSelectedWindowRemembered() }
         bind(.recordRegion) { $0.recordRegionRemembered() }
         bind(.recordFullScreen) { $0.recordFullScreenRemembered() }
+
+        // Stop is available regardless of how the recording was started, and
+        // doubles as an escape from a picker that is still open.
+        KeyboardShortcuts.onKeyUp(for: .stopRecording) { [weak self] in
+            guard let self else { return }
+            switch self.state.phase {
+            case .recording: self.state.stopRecording()
+            case .selecting: self.state.cancelSelection()
+            case .idle, .finishing: break
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

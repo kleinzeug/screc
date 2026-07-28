@@ -21,9 +21,18 @@ subscription.
 | Screen region | drag it out, then nudge edges and corners (⇧ locks aspect, ⌥ mirrors) |
 | Full screen | per display |
 
-Press **⌥⇧6** anywhere to start or stop recording in whichever mode is
-checked in the menu — full screen on the main display until you pick another.
-Rebindable in Settings.
+Global hotkeys, all rebindable in Settings:
+
+| | |
+|---|---|
+| ⌘⇧8 | Selected Window |
+| ⌘⌥⇧8 | Focused Window |
+| ⌘⇧9 | Full Screen |
+| ⌘⌥⇧9 | Screen Region |
+| ⌘⇧0 | Stop recording |
+
+Each mode hotkey starts from what that mode last recorded, so the second
+press of ⌘⌥⇧9 re-records the same region without asking.
 
 Output is live-encoded H.264/HEVC at your target bitrate, or GIF (auto-converted
 on stop, with an in-app frame editor for trimming frames). Recordings land in
