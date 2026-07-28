@@ -116,6 +116,10 @@ final class AppState: ObservableObject {
             do {
                 let target: CaptureTarget
                 switch request {
+                case _ where Prefs.debugMode:
+                    // Debug mode never touches ScreenCaptureKit (which would
+                    // demand the permission we are pretending to have).
+                    target = .synthetic(Self.syntheticSize(for: request))
                 case .focusedWindow:
                     target = .window(try await FocusedWindow.find())
                 case .display(let displayID):
@@ -345,8 +349,8 @@ final class AppState: ObservableObject {
     /// through moves, closes and reopens.
     private func presentIndicators(for target: CaptureTarget) {
         switch target {
-        case .display:
-            break // whole screen is recorded; nothing to point out
+        case .synthetic, .display:
+            break // whole screen, or debug mode — nothing to point out
         case .region(let display, let rect):
             if let hole = Self.globalRect(displayID: display.displayID, localTopLeft: rect) {
                 passepartout?.show(hole: hole)
@@ -502,6 +506,23 @@ final class AppState: ObservableObject {
                y: windowFrame.minY + (1 - norm.minY - norm.height) * windowFrame.height,
                width: norm.width * windowFrame.width,
                height: norm.height * windowFrame.height)
+    }
+
+    /// Point size the debug recorder should produce for a given request.
+    private static func syntheticSize(for request: CaptureRequest) -> CGSize {
+        switch request {
+        case .region(_, let rect):
+            return rect.size
+        case .pinnedWindow(let selection):
+            return CGSize(width: selection.frame.width * selection.normalizedRect.width,
+                          height: selection.frame.height * selection.normalizedRect.height)
+        case .display(let id):
+            return NSScreen.screens.first { $0.displayID == id }?.frame.size
+                ?? NSScreen.main?.frame.size ?? CGSize(width: 1280, height: 800)
+        case .focusedWindow:
+            return FocusedWindowTracker.focusedWindowInfo()?.frame.size
+                ?? CGSize(width: 1280, height: 800)
+        }
     }
 
     private static func display(withID id: CGDirectDisplayID) async throws -> SCDisplay {

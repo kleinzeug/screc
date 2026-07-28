@@ -18,6 +18,7 @@ enum DefaultsKey {
     static let customStoragePath = "customStoragePath"
     static let fileNamePattern = "fileNamePattern"
     static let notifyOnFinish = "notifyOnFinish"
+    static let debugMode = "debugMode"
 }
 
 /// Read-side helpers with defaults that match the SwiftUI `@AppStorage`
@@ -44,5 +45,11 @@ enum Prefs {
     }
     static var notifyOnFinish: Bool {
         (UserDefaults.standard.object(forKey: DefaultsKey.notifyOnFinish) as? Bool) ?? true
+    }
+    /// Development escape hatch: pretend the screen-recording permission was
+    /// granted and record black frames, so the UI can be exercised without
+    /// re-granting access after every rebuild. Never enabled by default.
+    static var debugMode: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.debugMode)
     }
 }

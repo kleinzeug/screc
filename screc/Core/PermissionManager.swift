@@ -23,8 +23,19 @@ final class PermissionManager: ObservableObject {
 
     private var pollTimer: Timer?
 
+    /// True in debug mode as well, so every gated code path opens up.
+    @Published private(set) var debugMode = Prefs.debugMode {
+        didSet { onChange?() }
+    }
+
     func refresh() {
-        granted = CGPreflightScreenCaptureAccess()
+        debugMode = Prefs.debugMode
+        granted = debugMode || CGPreflightScreenCaptureAccess()
+    }
+
+    func setDebugMode(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: DefaultsKey.debugMode)
+        refresh()
     }
 
     func requestAccess() {

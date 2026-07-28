@@ -4,6 +4,12 @@ struct OnboardingView: View {
     @ObservedObject var permissions: PermissionManager
     var onFinish: () -> Void
 
+    /// The debug-mode button is deliberately hard to hit by accident:
+    /// hover the permission card *and* hold ⌥.
+    @State private var hoveringPermissionCard = false
+    @State private var optionHeld = false
+    private var showsDebugToggle: Bool { hoveringPermissionCard && optionHeld }
+
     var body: some View {
         VStack(spacing: 20) {
             header
@@ -48,14 +54,31 @@ struct OnboardingView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: permissions.granted
-                          ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(permissions.granted ? .green : .orange)
+                    Image(systemName: permissions.debugMode
+                          ? "ladybug.fill"
+                          : (permissions.granted
+                             ? "checkmark.circle.fill" : "exclamationmark.circle.fill"))
+                        .foregroundStyle(permissions.debugMode ? .purple
+                                         : (permissions.granted ? .green : .orange))
                     Text("Screen Recording Access")
                         .font(.headline)
                     Spacer()
+                    if showsDebugToggle || permissions.debugMode {
+                        Button(permissions.debugMode ? "Leave Debug Mode" : "Debug Mode") {
+                            permissions.setDebugMode(!permissions.debugMode)
+                        }
+                        .controlSize(.small)
+                        .help("Pretend access was granted and record black frames — for testing the UI without re-granting permission after every rebuild")
+                    }
                 }
-                if permissions.granted {
+                if permissions.debugMode {
+                    Text("""
+                    **Debug mode** — screc behaves as if access were granted, but \
+                    every recording is black frames. For development only.
+                    """)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                } else if permissions.granted {
                     Text("Granted — screc can record your screen.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -89,6 +112,10 @@ struct OnboardingView: View {
             }
             .padding(6)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onHover { hoveringPermissionCard = $0 }
+        .onModifierKeysChanged(mask: .option) { _, new in
+            optionHeld = new.contains(.option)
         }
     }
 

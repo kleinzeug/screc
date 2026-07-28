@@ -15,6 +15,10 @@ enum CaptureTarget {
     /// window-style filters ignore `sourceRect`, and it also survives the
     /// window closing (the stream keeps running; we pause appends instead).
     case pinned(SCWindow, SCDisplay, CGRect)
+    /// Debug mode: no ScreenCaptureKit at all — black frames at this size,
+    /// so the whole encode/stats/convert path can be exercised without the
+    /// screen-recording permission. Size is in points.
+    case synthetic(CGSize)
 }
 
 /// ScreenCaptureKit → AVAssetWriter live-encode engine. ScreenCaptureKit
@@ -69,6 +73,9 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private var framesDropped = 0
     private var heartbeat: DispatchSourceTimer?
     private var statsTicker: DispatchSourceTimer?
+    private var syntheticTicker: DispatchSourceTimer?
+    private var pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var syntheticFrame: Int64 = 0
 
     @MainActor
     init(target: CaptureTarget, config: RecordingConfig, outputURL: URL) {
@@ -85,6 +92,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     // MARK: - Lifecycle
 
     func start() async throws {
+        if case .synthetic(let points) = target {
+            try startSynthetic(points: points)
+            return
+        }
         let filter = try await makeFilter()
         let contentPoints: CGSize
         switch target {
@@ -92,6 +103,8 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             contentPoints = rect.size
         case .window, .display:
             contentPoints = filter.contentRect.size
+        case .synthetic(let size):
+            contentPoints = size
         }
         let (width, height) = Self.outputPixelSize(
             contentPoints: contentPoints,
@@ -112,7 +125,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             streamConfig.ignoreShadowsSingleWindow = true
         case .region(_, let rect), .pinned(_, _, let rect):
             streamConfig.sourceRect = rect
-        case .display:
+        case .display, .synthetic:
             break
         }
         if wantsAudio {
@@ -214,6 +227,8 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         var duration: TimeInterval = 0
         sampleQueue.sync {
             finishing = true
+            syntheticTicker?.cancel()
+            syntheticTicker = nil
             heartbeat?.cancel()
             heartbeat = nil
             statsTicker?.cancel()
@@ -297,6 +312,96 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         }
     }
 
+    // MARK: - Synthetic capture (debug mode)
+
+    /// Drives the real writer with black frames on a timer, so everything
+    /// downstream — encoding, live stats, finalization, GIF conversion —
+    /// behaves exactly as in a real recording.
+    private func startSynthetic(points: CGSize) throws {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let (width, height) = Self.outputPixelSize(
+            contentPoints: points, scale: scale,
+            maxWidth: config.maxWidth, maxHeight: config.maxHeight)
+
+        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: outputURL)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+
+        var videoSettings: [String: Any] = [
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: config.videoBitrateKbps * 1000,
+                AVVideoExpectedSourceFrameRateKey: fps,
+                AVVideoMaxKeyFrameIntervalKey: fps * max(config.keyframeSeconds, 1),
+            ],
+        ]
+        videoSettings[AVVideoCodecKey] = config.format == .hevc
+            ? AVVideoCodecType.hevc : AVVideoCodecType.h264
+
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoInput.expectsMediaDataInRealTime = true
+        guard writer.canAdd(videoInput) else {
+            throw ScrecError.writerFailed("video settings rejected (\(width)×\(height))")
+        }
+        writer.add(videoInput)
+
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+            ])
+
+        guard writer.startWriting() else {
+            throw ScrecError.writerFailed(
+                writer.error?.localizedDescription ?? "could not start writing")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        self.writer = writer
+        self.videoInput = videoInput
+        self.pixelAdaptor = adaptor
+        self.startDate = Date()
+        sampleQueue.sync {
+            sessionStarted = true
+            syntheticFrame = 0
+        }
+
+        let ticker = DispatchSource.makeTimerSource(queue: sampleQueue)
+        ticker.schedule(deadline: .now(), repeating: 1.0 / Double(fps))
+        ticker.setEventHandler { [weak self] in self?.appendSyntheticFrame() }
+        ticker.resume()
+        syntheticTicker = ticker
+        startStatsTicker()
+    }
+
+    private func appendSyntheticFrame() {
+        guard !finishing, !paused,
+              let videoInput, videoInput.isReadyForMoreMediaData,
+              let pool = pixelAdaptor?.pixelBufferPool
+        else { return }
+        var buffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
+              let buffer
+        else { return }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        if let base = CVPixelBufferGetBaseAddress(buffer) {
+            // Opaque black: BGRA zeroed, alpha forced on.
+            memset(base, 0, CVPixelBufferGetBytesPerRow(buffer) * CVPixelBufferGetHeight(buffer))
+            let pixels = base.assumingMemoryBound(to: UInt8.self)
+            let count = CVPixelBufferGetBytesPerRow(buffer) * CVPixelBufferGetHeight(buffer)
+            for offset in stride(from: 3, to: count, by: 4) { pixels[offset] = 255 }
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        let pts = CMTime(value: syntheticFrame, timescale: CMTimeScale(fps))
+        pixelAdaptor?.append(buffer, withPresentationTime: pts)
+        syntheticFrame += 1
+        framesSinceTick += 1
+    }
+
     // MARK: - Setup helpers
 
     private func makeFilter() async throws -> SCContentFilter {
@@ -306,6 +411,8 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             return SCContentFilter(desktopIndependentWindow: window)
         case .pinned(let window, let display, _):
             return SCContentFilter(display: display, including: [window])
+        case .synthetic:
+            throw ScrecError.writerFailed("synthetic target has no filter")
         case .display(let display), .region(let display, _):
             let content = try await SCShareableContent
                 .excludingDesktopWindows(true, onScreenWindowsOnly: true)
@@ -336,6 +443,17 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         height *= factor
         return (max(2, Int(width.rounded()) & ~1),
                 max(2, Int(height.rounded()) & ~1))
+    }
+
+    private func startStatsTicker() {
+        sampleQueue.async { [self] in
+            guard statsTicker == nil else { return }
+            let st = DispatchSource.makeTimerSource(queue: sampleQueue)
+            st.schedule(deadline: .now() + 1, repeating: 1)
+            st.setEventHandler { [weak self] in self?.statsTick() }
+            st.resume()
+            statsTicker = st
+        }
     }
 
     private func startTimers() {
