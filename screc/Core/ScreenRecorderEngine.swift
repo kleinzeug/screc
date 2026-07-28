@@ -69,6 +69,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private var pauseBeganWall: Date?
     private var lastVideoBuffer: CMSampleBuffer?
     private var lastArrivalTime: CFTimeInterval = 0
+    /// PTS of the last frame handed to the writer. The writer requires
+    /// strictly increasing presentation times; one violation fails it and
+    /// loses the whole take, so anything at or before this is dropped.
+    private var lastVideoPTS = CMTime.invalid
     private var framesSinceTick = 0
     private var framesDropped = 0
     private var heartbeat: DispatchSourceTimer?
@@ -506,7 +510,17 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             framesDropped += 1
             return
         }
+        let pts = buffer.presentationTimeStamp
+        guard !lastVideoPTS.isValid || pts > lastVideoPTS else {
+            // A real frame racing a just-appended heartbeat copy can arrive
+            // marginally in the past. Keep its (newer) content for future
+            // heartbeats, but never hand the writer a non-increasing PTS.
+            lastVideoBuffer = buffer
+            lastArrivalTime = CACurrentMediaTime()
+            return
+        }
         videoInput.append(buffer)
+        lastVideoPTS = pts
         lastVideoBuffer = buffer
         lastArrivalTime = CACurrentMediaTime()
         framesSinceTick += 1
@@ -534,10 +548,11 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
               let videoInput, videoInput.isReadyForMoreMediaData,
               CACurrentMediaTime() - lastArrivalTime > 1.2
         else { return }
+        let pts = CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), pauseOffset)
+        if lastVideoPTS.isValid, pts <= lastVideoPTS { return }
         var timing = CMSampleTimingInfo(
             duration: CMTime(value: 1, timescale: CMTimeScale(fps)),
-            presentationTimeStamp: CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()),
-                                                  pauseOffset),
+            presentationTimeStamp: pts,
             decodeTimeStamp: .invalid)
         var copy: CMSampleBuffer?
         guard CMSampleBufferCreateCopyWithNewTiming(
@@ -547,6 +562,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
               let copy
         else { return }
         videoInput.append(copy)
+        lastVideoPTS = pts
     }
 
     private static func retimed(_ sample: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
