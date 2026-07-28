@@ -3,6 +3,7 @@
 # the pre-rebrand display name alive); run `xcodegen generate` instead.
 *.xcodeproj/
 build/
+dist/
 DerivedData/
 xcuserdata/
 *.xcuserstate
