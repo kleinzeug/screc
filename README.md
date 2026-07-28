@@ -92,6 +92,20 @@ If the menu-bar icon shows a hollow dot, permission is still missing. Enable
 ***screc*** under **System Settings → Privacy & Security → Screen & System Audio
 Recording** and relaunch.
 
+### Building without this team
+
+`project.yml` names the maintainer's `DEVELOPMENT_TEAM`, which your account
+cannot sign with. Build ad-hoc instead — this is exactly what CI does:
+
+```sh
+xcodebuild -project screc.xcodeproj -scheme screc \
+           CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" \
+           build
+```
+
+Or put your own team id in `project.yml` and re-run `xcodegen generate` —
+worth it if you iterate, for the reason below.
+
 ### Signing note (worth two minutes)
 
 macOS ties the screen-recording permission to the app's **code-signing

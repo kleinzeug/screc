@@ -47,14 +47,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements
         CODE_SIGN_STYLE: Automatic
-        # Ad-hoc signing so the project builds without an Apple ID configured.
-        # IMPORTANT: macOS ties the screen-recording permission to the signing
-        # identity — ad-hoc builds re-prompt after every rebuild and Sequoia is
-        # unreliable granting ScreenCaptureKit access to them. Once signed into
-        # Xcode (Settings → Accounts, free Apple ID suffices):
-        #   1. delete the CODE_SIGN_IDENTITY line below
-        #   2. set DEVELOPMENT_TEAM to your team ID
-        CODE_SIGN_IDENTITY: "-"
-        # DEVELOPMENT_TEAM: XXXXXXXXXX
+        # Signed with the team's Apple Development certificate. macOS ties the
+        # screen-recording permission to the signing identity, so a stable
+        # identity keeps the grant across rebuilds; ad-hoc builds would be
+        # re-prompted every time. Contributors without this team fall back to
+        # ad-hoc automatically (see Config/local.xcconfig in the README).
+        DEVELOPMENT_TEAM: SJ53Z596GU
         # The version-stamp script needs to write into the bundle and call git.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
