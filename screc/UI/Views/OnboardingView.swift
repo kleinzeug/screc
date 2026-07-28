@@ -9,6 +9,7 @@ struct OnboardingView: View {
             header
             permissionCard
             howItWorks
+            links
             footer
         }
         .padding(28)
@@ -19,14 +20,20 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 6) {
-            HStack(alignment: .lastTextBaseline, spacing: 10) {
-                Text("●")
-                    .font(.system(size: 26))
-                    .foregroundStyle(.red)
-                Text("screc")
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.primary)
+            Button {
+                NSWorkspace.shared.open(BuildFlavor.siteURL)
+            } label: {
+                HStack(alignment: .lastTextBaseline, spacing: 10) {
+                    Text("●")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.red)
+                    Text("screc")
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.primary)
+                }
             }
+            .buttonStyle(.plain)
+            .help("Open screc.app")
             Text("One click in the menu bar → a small, share-ready recording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -96,6 +103,18 @@ struct OnboardingView: View {
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var links: some View {
+        if BuildFlavor.showsSourceLinks {
+            HStack(spacing: 16) {
+                Link("Source on GitHub", destination: BuildFlavor.repositoryURL)
+                Text("·").foregroundStyle(.tertiary)
+                Link("Buy me a coffee ☕", destination: BuildFlavor.coffeeURL)
+            }
+            .font(.callout)
+        }
     }
 
     private var footer: some View {

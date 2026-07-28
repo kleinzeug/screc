@@ -97,13 +97,20 @@ struct SettingsView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .lastTextBaseline, spacing: 7) {
-                    Text("●")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.red)
-                    Text("screc")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                Button {
+                    NSWorkspace.shared.open(BuildFlavor.siteURL)
+                } label: {
+                    HStack(alignment: .lastTextBaseline, spacing: 7) {
+                        Text("●")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.red)
+                        Text("screc")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
                 }
+                .buttonStyle(.plain)
+                .help("Open screc.app")
                 Text("One click in the menu bar → a small, share-ready recording.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -382,6 +389,14 @@ struct SettingsView: View {
 
             Section("About") {
                 LabeledContent("Version", value: versionString)
+                if BuildFlavor.showsSourceLinks {
+                    LabeledContent("Source") {
+                        HStack(spacing: 14) {
+                            Link("GitHub", destination: BuildFlavor.repositoryURL)
+                            Link("Buy me a coffee ☕", destination: BuildFlavor.coffeeURL)
+                        }
+                    }
+                }
                 LabeledContent("Author", value: "Philipp Holzschneider")
                 Text("""
                 **License** — Binary distributions obtained through Apple's \
