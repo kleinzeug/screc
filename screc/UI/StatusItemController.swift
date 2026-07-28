@@ -16,6 +16,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let windowManager: WindowManager
     private let store: RecordingStore
     private let statusItem: NSStatusItem
+    private var modeEntries: [ModeEntry] = []
+    private var altTimer: Timer?
+    private var altActive = false
+    private var hasAppliedAlt = false
 
     init(state: AppState, permissions: PermissionManager,
          windowManager: WindowManager, store: RecordingStore) {
@@ -236,7 +240,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.button?.performClick(nil)
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        startAltTracking()
+    }
+
     func menuDidClose(_ menu: NSMenu) {
+        stopAltTracking()
+        modeEntries.removeAll()
         statusItem.menu = nil
     }
 
@@ -303,33 +313,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return menu
     }
 
-    /// The four modes. A title that names its remembered configuration
-    /// records straight away; a title ending in "…" opens a picker first
-    /// (the usual macOS convention). Holding ⌥ turns any configured entry
-    /// back into its picker, which is how a configuration gets replaced.
-    private func addModeItems(to menu: NSMenu) {
-        func add(configured: String?,
-                 pickerTitle: String,
-                 instantAction: Selector,
-                 pickerAction: Selector,
-                 shortcut: KeyboardShortcuts.Name,
-                 isDefault: Bool) {
-            let main = item(configured ?? pickerTitle,
-                            action: configured != nil ? instantAction : pickerAction)
-            main.isEnabled = permissions.granted
-            main.state = isDefault ? .on : .off
-            main.setShortcut(for: shortcut)
-            menu.addItem(main)
+    /// One entry per mode — never more. Normally each opens its picker;
+    /// while ⌥ is held they switch to what that mode last recorded and start
+    /// immediately.
+    ///
+    /// NSMenuItem.isAlternate is not usable here: it only pairs items that
+    /// share a key equivalent, and these carry their own shortcuts. The ⌥
+    /// state is polled instead (menu tracking runs its own event loop, so a
+    /// timer in .common mode is what reliably sees the modifier).
+    private struct ModeEntry {
+        let item: NSMenuItem
+        let plainTitle: String
+        let configuredTitle: String?
+        let pickerAction: Selector
+        let instantAction: Selector
+    }
 
-            // ⌥: reconfigure. Only meaningful once something is remembered.
-            guard configured != nil else { return }
-            let alt = item(pickerTitle, action: pickerAction)
-            alt.isEnabled = permissions.granted
-            alt.state = isDefault ? .on : .off
-            alt.isAlternate = true
-            alt.keyEquivalentModifierMask = [.option]
-            menu.addItem(alt)
-        }
+    private func addModeItems(to menu: NSMenu) {
+        modeEntries.removeAll()
 
         var isWindowDefault = false, isPinnedDefault = false
         var isRegionDefault = false, isDisplayDefault = false
@@ -340,34 +341,87 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .display: isDisplayDefault = true
         }
 
-        // Focused window is inherently "whatever is focused now" — nothing
-        // to remember, so no picker and no suffix.
-        let focused = item("Focused Window", action: #selector(recordFocused))
-        focused.isEnabled = permissions.granted
-        focused.state = isWindowDefault ? .on : .off
-        focused.setShortcut(for: .recordFocusedWindow)
-        menu.addItem(focused)
+        func add(plain: String,
+                 configured: String?,
+                 pickerAction: Selector,
+                 instantAction: Selector,
+                 shortcut: KeyboardShortcuts.Name,
+                 isDefault: Bool) {
+            let entry = item(plain, action: pickerAction)
+            entry.isEnabled = permissions.granted
+            entry.state = isDefault ? .on : .off
+            entry.setShortcut(for: shortcut)
+            menu.addItem(entry)
+            modeEntries.append(ModeEntry(item: entry,
+                                         plainTitle: plain,
+                                         configuredTitle: configured,
+                                         pickerAction: pickerAction,
+                                         instantAction: instantAction))
+        }
 
-        add(configured: ModeMemory.pinned.map { "Selected Window — \(Self.windowLabel(for: $0))" },
-            pickerTitle: "Selected Window…",
-            instantAction: #selector(recordPinnedRemembered),
+        // Focused window is always "whatever is focused right now" — there is
+        // nothing to remember and nothing to pick.
+        add(plain: "Focused Window", configured: nil,
+            pickerAction: #selector(recordFocused), instantAction: #selector(recordFocused),
+            shortcut: .recordFocusedWindow, isDefault: isWindowDefault)
+
+        add(plain: "Selected Window…",
+            configured: ModeMemory.pinned.map { "Selected Window — \(Self.windowLabel(for: $0))" },
             pickerAction: #selector(recordPinned),
-            shortcut: .recordSelectedWindow,
-            isDefault: isPinnedDefault)
+            instantAction: #selector(recordPinnedRemembered),
+            shortcut: .recordSelectedWindow, isDefault: isPinnedDefault)
 
-        add(configured: ModeMemory.usableRegion().map { "Screen Region — \(Self.regionLabel(for: $0.1))" },
-            pickerTitle: "Screen Region…",
-            instantAction: #selector(recordRegionRemembered),
+        add(plain: "Screen Region…",
+            configured: ModeMemory.usableRegion().map { "Screen Region — \(Self.regionLabel(for: $0.1))" },
             pickerAction: #selector(recordRegion),
-            shortcut: .recordRegion,
-            isDefault: isRegionDefault)
+            instantAction: #selector(recordRegionRemembered),
+            shortcut: .recordRegion, isDefault: isRegionDefault)
 
-        add(configured: ModeMemory.usableDisplay().map { "Full Screen — \(Self.screenLabel(for: $0))" },
-            pickerTitle: "Full Screen…",
-            instantAction: #selector(recordFullScreenRemembered),
+        add(plain: "Full Screen…",
+            configured: ModeMemory.usableDisplay().map { "Full Screen — \(Self.screenLabel(for: $0))" },
             pickerAction: #selector(pickScreen),
-            shortcut: .recordFullScreen,
-            isDefault: isDisplayDefault)
+            instantAction: #selector(recordFullScreenRemembered),
+            shortcut: .recordFullScreen, isDefault: isDisplayDefault)
+
+        applyAlt(NSEvent.modifierFlags.contains(.option))
+    }
+
+    /// Swap the four titles/actions in place as ⌥ goes down and up.
+    private func applyAlt(_ alt: Bool) {
+        guard altActive != alt || !hasAppliedAlt else {
+            hasAppliedAlt = true
+            return
+        }
+        altActive = alt
+        hasAppliedAlt = true
+        for entry in modeEntries {
+            if alt, let configured = entry.configuredTitle {
+                entry.item.title = configured
+                entry.item.action = entry.instantAction
+            } else {
+                entry.item.title = entry.plainTitle
+                entry.item.action = entry.pickerAction
+            }
+        }
+    }
+
+    private func startAltTracking() {
+        stopAltTracking()
+        hasAppliedAlt = false
+        applyAlt(NSEvent.modifierFlags.contains(.option))
+        let timer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.applyAlt(NSEvent.modifierFlags.contains(.option))
+            }
+        }
+        // .common so it keeps firing while the menu tracks events.
+        RunLoop.current.add(timer, forMode: .common)
+        altTimer = timer
+    }
+
+    private func stopAltTracking() {
+        altTimer?.invalidate()
+        altTimer = nil
     }
 
     /// Window titles can be arbitrarily long; keep the menu a sane width.
