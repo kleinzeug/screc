@@ -7,7 +7,8 @@
 #
 # Prerequisites (one-time, see docs/RELEASING.md):
 #   • a "Developer ID Application" certificate in the login keychain
-#   • DEVELOPMENT_TEAM set in project.yml
+#   • DEVELOPMENT_TEAM set in Config/local.xcconfig (gitignored — account
+#     information never lives in committed sources; copy the .example)
 #   • a notarytool keychain profile named "screc"
 #
 set -euo pipefail
@@ -34,8 +35,12 @@ security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID App
   || fail "No \"Developer ID Application\" certificate found in the keychain.
        Xcode → Settings → Accounts → your team → Manage Certificates… → + → Developer ID Application"
 
-TEAM_ID=$(grep -E '^\s*DEVELOPMENT_TEAM:' project.yml | awk '{print $2}' | tr -d '"' || true)
-[[ -n "$TEAM_ID" ]] || fail "DEVELOPMENT_TEAM is not set in project.yml."
+# The team id lives in the gitignored local.xcconfig, never in committed
+# sources (xcconfig syntax: DEVELOPMENT_TEAM = TEAMID).
+TEAM_ID=$(sed -n 's/^[[:space:]]*DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*\([A-Za-z0-9][A-Za-z0-9]*\).*$/\1/p' \
+  Config/local.xcconfig 2>/dev/null | head -n 1 || true)
+[[ -n "$TEAM_ID" ]] || fail "DEVELOPMENT_TEAM is not set in Config/local.xcconfig.
+       cp Config/local.xcconfig.example Config/local.xcconfig   # then fill in your team id"
 
 if [[ $SKIP_NOTARIZE -eq 0 ]]; then
   xcrun notarytool history --keychain-profile "$KEYCHAIN_PROFILE" >/dev/null 2>&1 \
