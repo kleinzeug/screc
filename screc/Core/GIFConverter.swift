@@ -5,8 +5,11 @@ import UniformTypeIdentifiers
 import VideoToolbox
 
 /// MP4 → animated GIF, fully native (ImageIO). Frames are decoded already
-/// downscaled (decompression-session scaling via pixel-buffer size hints) and
-/// sampled at the target GIF frame rate by PTS. Sits behind this enum so a
+/// downscaled (decompression-session scaling via pixel-buffer size hints),
+/// sampled at the target GIF frame rate along the source timeline, and each
+/// frame carries its real display duration (PTS gap to the next kept frame),
+/// so wall-clock timing survives the recorder's sparse damage-driven
+/// delivery. Sits behind this enum so a
 /// gifski-based encoder can drop in later (better palettes, AGPL/commercial
 /// licensing decision — see DESIGN.md §5.3).
 ///
@@ -54,16 +57,33 @@ enum GIFConverter {
         // gradients under GIF's 256-color quantization.
         let ciContext = dither > 0.01 ? CIContext(options: [.cacheIntermediates: false]) : nil
 
-        let delay = 1.0 / Double(fps)
-        let frameProperties = [
-            kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFDelayTime as String: delay,
-                kCGImagePropertyGIFUnclampedDelayTime as String: delay,
-            ],
-        ] as CFDictionary
-
+        // Sample along the SOURCE TIMELINE at the target rate, and give each
+        // kept frame its real duration — the PTS gap to the next kept frame.
+        // The recorder is damage-driven: idle stretches arrive as sparse
+        // frames (~1/s heartbeat), so a fixed per-frame delay would
+        // time-compress them (10 s of idle ≈ 10 frames ≈ 0.8 s of GIF).
+        let step = 1.0 / Double(fps)
         var nextKeepTime = 0.0
         var framesAdded = 0
+        var pending: (image: CGImage, pts: Double)?
+        // GIF stores delays in centiseconds; carry the rounding remainder so
+        // quantization doesn't accumulate into drift on long clips.
+        var carry = 0.0
+
+        func flush(_ entry: (image: CGImage, pts: Double), until nextPTS: Double) {
+            let target = max(nextPTS - entry.pts, 0) + carry
+            let centiseconds = max(2, Int((target * 100).rounded()))
+            let delay = Double(centiseconds) / 100
+            carry = target - delay
+            CGImageDestinationAddImage(destination, entry.image, [
+                kCGImagePropertyGIFDictionary as String: [
+                    kCGImagePropertyGIFDelayTime as String: delay,
+                    kCGImagePropertyGIFUnclampedDelayTime as String: delay,
+                ],
+            ] as CFDictionary)
+            framesAdded += 1
+        }
+
         while let sample = trackOutput.copyNextSampleBuffer() {
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             guard pts >= nextKeepTime,
@@ -82,9 +102,18 @@ enum GIFConverter {
                 VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage)
             }
             guard let cgImage else { continue }
-            CGImageDestinationAddImage(destination, cgImage, frameProperties)
-            framesAdded += 1
-            nextKeepTime += delay
+            if let entry = pending {
+                flush(entry, until: pts)
+            }
+            pending = (cgImage, pts)
+            // Snap the grid to the timeline (never += per kept frame): a
+            // sparse source must not pull the grid along with it.
+            nextKeepTime = (floor(pts / step) + 1) * step
+        }
+        if let entry = pending {
+            // The last frame has no successor: give it the remaining movie
+            // time so total GIF duration matches the recording.
+            flush(entry, until: max(entry.pts + step, duration))
         }
         if reader.status == .failed {
             try? FileManager.default.removeItem(at: output)
