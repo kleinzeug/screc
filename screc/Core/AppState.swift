@@ -131,7 +131,7 @@ final class AppState: ObservableObject {
                     currentPinned = selection
                     currentPinnedDisplayID = Self.screenContaining(selection.frame)?.displayID ?? 0
                 }
-                try await begin(target: target)
+                try await begin(target: target, request: request)
             } catch {
                 currentPinned = nil
                 presentError(error)
@@ -313,7 +313,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Internals
 
-    private func begin(target: CaptureTarget) async throws {
+    private func begin(target: CaptureTarget, request: CaptureRequest) async throws {
         let config = PresetLibrary.currentConfig
         activeConfig = config
         let url = store.newOutputURL(fileExtension: "mp4")
@@ -341,37 +341,39 @@ final class AppState: ObservableObject {
         try await engine.start()
         self.engine = engine
         phase = .recording
-        presentIndicators(for: target)
+        presentIndicators(for: request)
     }
 
     /// The recording passe-partout: strongly dim everything except what's
     /// captured. Window mode follows focus; pinned mode follows one window
     /// through moves, closes and reopens.
-    private func presentIndicators(for target: CaptureTarget) {
-        switch target {
-        case .synthetic, .display:
-            break // whole screen, or debug mode — nothing to point out
-        case .region(let display, let rect):
-            if let hole = Self.globalRect(displayID: display.displayID, localTopLeft: rect) {
+    /// Driven by the request rather than the resolved target, so the
+    /// indicators behave identically in debug mode (where the target is a
+    /// synthetic black-frame source with no window or display attached).
+    private func presentIndicators(for request: CaptureRequest) {
+        switch request {
+        case .display:
+            break // the whole screen is recorded; nothing to point out
+        case .region(let displayID, let rect):
+            if let hole = Self.globalRect(displayID: displayID, localTopLeft: rect) {
                 passepartout?.show(hole: hole)
             }
-        case .window(let window):
-            let hole = FocusedWindowTracker.focusedWindowInfo()?.frame
-            passepartout?.show(hole: hole)
+        case .focusedWindow:
+            let info = FocusedWindowTracker.focusedWindowInfo()
+            passepartout?.show(hole: info?.frame)
             windowTracker?.start(
-                initialWindowID: window.windowID,
+                initialWindowID: info?.id ?? 0,
                 onFrame: { [weak self] frame in
                     self?.passepartout?.update(hole: frame)
                 },
                 onWindowChange: { [weak self] windowID in
                     self?.switchFocusRecording(to: windowID)
                 })
-        case .pinned(let window, _, _):
-            guard let selection = currentPinned else { break }
+        case .pinnedWindow(let selection):
             passepartout?.show(hole: Self.pinnedHole(windowFrame: selection.frame,
                                                      norm: selection.normalizedRect))
             pinnedTracker?.start(
-                windowID: window.windowID,
+                windowID: selection.windowID,
                 identity: .init(ownerName: selection.ownerName, title: selection.title),
                 onFrame: { [weak self] frame in
                     self?.pinnedFrameChanged(frame)
