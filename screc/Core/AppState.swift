@@ -20,6 +20,9 @@ final class AppState: ObservableObject {
         case idle
         /// Region drag-select or window-pick overlay is up.
         case selecting
+        /// The 3-2-1 overlay is running; any status-item click or the stop
+        /// hotkey cancels.
+        case countdown
         case recording
         /// Finalizing the file / converting.
         case finishing
@@ -75,6 +78,11 @@ final class AppState: ObservableObject {
     private let store: RecordingStore
     private var engine: ScreenRecorderEngine?
     private var isStarting = false
+    /// User-controlled pause (⌥-click on the status item, menu, hotkey) —
+    /// independent of pinned mode's automatic window-gone pause. The engine
+    /// runs only when NEITHER reason is active.
+    private(set) var isUserPaused = false
+    private var pinnedWindowGone = false
     /// Configuration the running recording was started with (drives GIF
     /// auto-convert).
     private var activeConfig: RecordingConfig?
@@ -94,6 +102,7 @@ final class AppState: ObservableObject {
     weak var passepartout: PassepartoutController?
     weak var windowTracker: FocusedWindowTracker?
     weak var pinnedTracker: PinnedWindowTracker?
+    weak var countdown: CountdownController?
 
     init(store: RecordingStore) {
         self.store = store
@@ -113,6 +122,44 @@ final class AppState: ObservableObject {
     }
 
     func record(_ request: CaptureRequest) {
+        guard phase == .idle, !isStarting else { return }
+        // Optional 3-2-1 before any capture mode starts. The target is
+        // resolved AFTER the count — "focused window" means the window
+        // focused when recording begins, not when it was requested.
+        if Prefs.countdownEnabled, let countdown {
+            phase = .countdown
+            countdown.begin(on: Self.countdownScreen(for: request)) { [weak self] finished in
+                guard let self else { return }
+                self.phase = .idle
+                if finished { self.startRecording(request) }
+            }
+            return
+        }
+        startRecording(request)
+    }
+
+    func cancelCountdown() {
+        guard phase == .countdown else { return }
+        countdown?.cancel() // fires the completion with finished = false
+    }
+
+    /// Screen the countdown overlay appears on — where the capture will be.
+    private static func countdownScreen(for request: CaptureRequest) -> NSScreen {
+        let fallback = NSScreen.main ?? NSScreen.screens[0]
+        switch request {
+        case .display(let id), .region(let id, _):
+            return NSScreen.screens.first { $0.displayID == id } ?? fallback
+        case .pinnedWindow(let selection):
+            return screenContaining(selection.frame) ?? fallback
+        case .focusedWindow:
+            guard let frame = FocusedWindowTracker.focusedWindowInfo()?.frame else {
+                return fallback
+            }
+            return screenContaining(frame) ?? fallback
+        }
+    }
+
+    private func startRecording(_ request: CaptureRequest) {
         guard phase == .idle, !isStarting else { return }
         isStarting = true
         Task {
@@ -158,6 +205,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// ⌥-click on the status item, the ⌥ menu entry, or the pause hotkey.
+    /// PTS retiming in the engine turns the pause into a clean cut.
+    func togglePause() {
+        guard phase == .recording, let engine else { return }
+        isUserPaused.toggle()
+        if isUserPaused {
+            engine.pause()
+        } else if !pinnedWindowGone {
+            engine.resume()
+        }
+        // Instant feedback; the engine's 1 Hz stats tick confirms right after.
+        stats.isPaused = isUserPaused || pinnedWindowGone
+    }
+
     func stopRecording() {
         guard phase == .recording, let engine else { return }
         windowTracker?.stop()
@@ -167,12 +228,23 @@ final class AppState: ObservableObject {
         pinnedGeometryTimer?.invalidate()
         pinnedGeometryTimer = nil
         pendingPinnedSourceRect = nil
+        isUserPaused = false
+        pinnedWindowGone = false
         phase = .finishing
         finishingLabel = "saving…"
         Task {
             do {
                 let result = try await engine.stop()
-                if Prefs.discardShortRecordings, result.duration < 3 {
+                let tooShort = Prefs.discardShortRecordings && result.duration < 3
+                // Microphone recordings carry the mic as a second track —
+                // fold it into one mixed track before the file is surfaced
+                // (browsers only play the first audio track of an MP4).
+                if engine.capturesMic, !tooShort {
+                    finishingLabel = "mixing…"
+                    await mixdownMicTrack(at: result.url,
+                                          systemAudioPresent: engine.capturesSystemAudio)
+                }
+                if tooShort {
                     // Accidental start-stop — not worth keeping.
                     try? FileManager.default.removeItem(at: result.url)
                 } else if let config = activeConfig, config.format == .gif,
@@ -430,7 +502,9 @@ final class AppState: ObservableObject {
                     self?.pinnedFrameChanged(frame)
                 },
                 onGone: { [weak self] in
+                    self?.pinnedWindowGone = true
                     self?.engine?.pause()
+                    self?.stats.isPaused = true
                     self?.passepartout?.update(hole: nil)
                 },
                 onReturn: { [weak self] windowID, frame in
@@ -487,6 +561,7 @@ final class AppState: ObservableObject {
 
     private func pinnedWindowReturned(windowID: CGWindowID, frame: NSRect) {
         guard phase == .recording, let selection = currentPinned else { return }
+        pinnedWindowGone = false
         currentPinned?.windowID = windowID
         currentPinned?.frame = frame
         guard let screen = Self.screenContaining(frame) else { return }
@@ -496,7 +571,8 @@ final class AppState: ObservableObject {
                                                screen: screen)
         passepartout?.update(hole: Self.pinnedHole(windowFrame: frame,
                                                    norm: selection.normalizedRect))
-        retargetPinned(sourceRect: sourceRect, resume: true)
+        // A user-initiated pause survives the window's return.
+        retargetPinned(sourceRect: sourceRect, resume: !isUserPaused)
     }
 
     private func retargetPinned(sourceRect: CGRect, resume: Bool) {
@@ -595,6 +671,34 @@ final class AppState: ObservableObject {
         return NSRect(x: screen.frame.minX + rect.minX,
                       y: screen.frame.minY + screen.frame.height - rect.maxY,
                       width: rect.width, height: rect.height)
+    }
+
+    /// Rewrites the finished file with all audio tracks mixed into one,
+    /// applying the mic-gain slider. Failure keeps the two-track original —
+    /// still fully playable in QuickTime — and says so.
+    private func mixdownMicTrack(at url: URL, systemAudioPresent: Bool) async {
+        let gain = Float(Prefs.micGain)
+        let gains: [Float] = systemAudioPresent ? [1.0, gain] : [gain]
+        let mixedURL = url.deletingLastPathComponent()
+            .appendingPathComponent(".mixing-\(url.lastPathComponent)")
+        do {
+            try await AudioMixdown.mix(input: url, output: mixedURL,
+                                       gains: gains,
+                                       audioBitrateKbps: activeConfig?.audioBitrateKbps ?? 96,
+                                       channels: activeConfig?.audioChannels == 1 ? 1 : 2)
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: mixedURL)
+        } catch {
+            try? FileManager.default.removeItem(at: mixedURL)
+            Log.engine.error("mic mix-down failed: \(error.localizedDescription)")
+            NSApp.activate()
+            let alert = NSAlert()
+            alert.messageText = "Microphone mix-down failed"
+            alert.informativeText = error.localizedDescription
+                + "\n\nThe recording was kept with the microphone on a second "
+                + "audio track — QuickTime plays both; some web players only "
+                + "play the first."
+            alert.runModal()
+        }
     }
 
     /// Percentage shown in the status item while converting ("converting…

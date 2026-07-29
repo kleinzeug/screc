@@ -16,6 +16,9 @@ extension KeyboardShortcuts.Name {
     /// Completes the row: 8 starts window modes, 9 area modes, 0 stops.
     static let stopRecording = Self("stopRecording",
                                     default: .init(.zero, modifiers: [.command, .shift]))
+    /// The ⌥ variant of stop, matching the ⌥-click on the status item.
+    static let pauseRecording = Self("pauseRecording",
+                                     default: .init(.zero, modifiers: [.command, .option, .shift]))
 
     static let allRecordingShortcuts: [(name: Self, label: String)] = [
         (.recordFocusedWindow, "Focused Window"),
@@ -23,6 +26,7 @@ extension KeyboardShortcuts.Name {
         (.recordRegion, "Screen Region"),
         (.recordFullScreen, "Full Screen"),
         (.stopRecording, "Stop recording"),
+        (.pauseRecording, "Pause / Resume"),
     ]
 }
 
@@ -39,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var passepartout: PassepartoutController!
     private var windowTracker: FocusedWindowTracker!
     private var pinnedTracker: PinnedWindowTracker!
+    private var countdownController: CountdownController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -57,6 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.windowTracker = windowTracker
         pinnedTracker = PinnedWindowTracker()
         state.pinnedTracker = pinnedTracker
+        countdownController = CountdownController()
+        state.countdown = countdownController
         windowManager = WindowManager(state: state, permissions: permissions, store: store)
         statusItemController = StatusItemController(
             state: state,
@@ -86,10 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.windowManager.showOnboarding()
                     return
                 }
-                if self.state.phase == .recording {
-                    self.state.stopRecording()
-                } else if self.state.phase == .idle {
-                    action(self.state)
+                switch self.state.phase {
+                case .recording: self.state.stopRecording()
+                case .countdown: self.state.cancelCountdown() // toggle semantics
+                case .idle: action(self.state)
+                case .selecting, .finishing: break
                 }
             }
         }
@@ -98,6 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bind(.recordRegion) { $0.recordRegionRemembered() }
         bind(.recordFullScreen) { $0.recordFullScreenRemembered() }
 
+        KeyboardShortcuts.onKeyUp(for: .pauseRecording) { [weak self] in
+            self?.state.togglePause()
+        }
+
         // Stop is available regardless of how the recording was started, and
         // doubles as an escape from a picker that is still open.
         KeyboardShortcuts.onKeyUp(for: .stopRecording) { [weak self] in
@@ -105,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch self.state.phase {
             case .recording: self.state.stopRecording()
             case .selecting: self.state.cancelSelection()
+            case .countdown: self.state.cancelCountdown()
             case .idle, .finishing: break
             }
         }
@@ -114,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// down a live AVAssetWriter — an unfinalized MP4 has no moov atom and is
     /// unreadable. Stop, wait for the file to land, then let go.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if state.phase == .countdown {
+            state.cancelCountdown()
+        }
         if state.phase == .recording {
             state.stopRecording()
         }

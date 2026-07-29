@@ -45,8 +45,16 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private let outputURL: URL
     private let wantsAudio: Bool
     private let showsCursor: Bool
+    /// Microphone rides the same SCStream (SCK captures it natively on
+    /// macOS 15) and lands in a SEPARATE track; AppState mixes it down after
+    /// stop. True only with the feature enabled AND the permission granted.
+    let capturesMic: Bool
+    private let micDeviceID: String
 
     private var fps: Int { config.maxFPS }
+    /// Whether a system-audio track is being written (mix-down needs to know
+    /// which tracks exist and in what order).
+    var capturesSystemAudio: Bool { wantsAudio }
 
     private let sampleQueue = DispatchQueue(label: "com.holzschneider.screc.capture")
 
@@ -55,6 +63,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var audioInput: AVAssetWriterInput?
+    private var micInput: AVAssetWriterInput?
     private var startDate = Date()
 
     // MARK: sampleQueue-confined state
@@ -94,6 +103,17 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             && config.audioBitrateKbps > 0
             && Prefs.captureSystemAudio
         self.showsCursor = Prefs.showsCursor
+        var mic = false
+        if case .synthetic = target {
+            mic = false // debug mode has no SCStream to carry the mic
+        } else if config.format != .gif, Prefs.micEnabled {
+            mic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            if Prefs.micEnabled, !mic {
+                Log.engine.notice("mic enabled but permission not granted — recording without it")
+            }
+        }
+        self.capturesMic = mic
+        self.micDeviceID = Prefs.micDeviceID
         super.init()
     }
 
@@ -142,6 +162,12 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             streamConfig.sampleRate = 48_000
             // Match the writer's channel layout so no downmix is needed.
             streamConfig.channelCount = config.audioChannels == 1 ? 1 : 2
+        }
+        if capturesMic {
+            streamConfig.captureMicrophone = true
+            if !micDeviceID.isEmpty {
+                streamConfig.microphoneCaptureDeviceID = micDeviceID
+            }
         }
 
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(),
@@ -202,6 +228,24 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             }
         }
 
+        if capturesMic {
+            // Intermediate voice track (mono AAC); the post-stop mix-down
+            // decodes it again, applies the gain slider, and folds it into
+            // the system-audio track.
+            let micSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: 48_000,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderBitRateKey: 96_000,
+            ]
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
+            input.expectsMediaDataInRealTime = true
+            if writer.canAdd(input) {
+                writer.add(input)
+                micInput = input
+            }
+        }
+
         guard writer.startWriting() else {
             throw ScrecError.writerFailed(writer.error?.localizedDescription ?? "could not start writing")
         }
@@ -215,6 +259,9 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
         if wantsAudio {
             try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: sampleQueue)
+        }
+        if capturesMic {
+            try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: sampleQueue)
         }
         self.stream = stream
         sampleQueue.sync {} // publish writer/inputs to the queue before frames arrive
@@ -257,6 +304,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         }
         videoInput?.markAsFinished()
         audioInput?.markAsFinished()
+        micInput?.markAsFinished()
         await writer.finishWriting()
         if writer.status == .failed {
             throw ScrecError.writerFailed(writer.error?.localizedDescription ?? "unknown encoder failure")
@@ -492,7 +540,8 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         guard !finishing, !paused, sampleBuffer.isValid else { return }
         switch type {
         case .screen: handleVideo(sampleBuffer)
-        case .audio: handleAudio(sampleBuffer)
+        case .audio: handleAudio(sampleBuffer, into: audioInput)
+        case .microphone: handleAudio(sampleBuffer, into: micInput)
         default: break
         }
     }
@@ -535,17 +584,18 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         framesSinceTick += 1
     }
 
-    private func handleAudio(_ sampleBuffer: CMSampleBuffer) {
+    /// Shared by the system-audio and microphone tracks.
+    private func handleAudio(_ sampleBuffer: CMSampleBuffer, into input: AVAssetWriterInput?) {
         // Audio before the first video frame would precede the session start.
         guard sessionStarted,
-              let audioInput, audioInput.isReadyForMoreMediaData
+              let input, input.isReadyForMoreMediaData
         else { return }
         var buffer = sampleBuffer
         if pauseOffset != .zero, let shifted = Self.retimed(sampleBuffer, by: pauseOffset) {
             buffer = shifted
         }
         guard buffer.presentationTimeStamp >= sessionStartPTS else { return }
-        audioInput.append(buffer)
+        input.append(buffer)
     }
 
     /// SCK is damage-driven: a static screen delivers no frames, which would

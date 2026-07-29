@@ -50,6 +50,7 @@ targets:
         # Menu-bar-only app: no Dock icon, no app menu.
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "screc records the microphone only while you are recording, and only when microphone capture is enabled in Settings."
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements

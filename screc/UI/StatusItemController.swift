@@ -49,10 +49,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.image = Icons.recordingStop
             button.imagePosition = .imageTrailing
             button.attributedTitle = Self.statsTitle(state.stats)
-            button.toolTip = "screc — click to stop recording"
+            button.toolTip = "screc — click to stop, ⌥-click to pause/resume"
             button.setAccessibilityLabel(state.stats.isPaused
-                ? "screc, recording paused, click to stop"
-                : "screc, recording, click to stop")
+                ? "screc, recording paused, click to stop, option-click to resume"
+                : "screc, recording, click to stop, option-click to pause")
         case .finishing:
             button.image = Icons.saving
             button.imagePosition = .imageTrailing
@@ -65,6 +65,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.attributedTitle = NSAttributedString(string: "")
             button.toolTip = "screc — make a selection (Esc cancels)"
             button.setAccessibilityLabel("screc, choosing what to record")
+        case .countdown:
+            button.image = Icons.selecting
+            button.imagePosition = .imageOnly
+            button.attributedTitle = NSAttributedString(string: "")
+            button.toolTip = "screc — recording starts shortly, click to cancel"
+            button.setAccessibilityLabel("screc, countdown running, click to cancel")
         case .idle:
             button.image = permissions.granted ? Icons.readyRedDot : Icons.recordNoPermission
             button.imagePosition = .imageOnly
@@ -212,7 +218,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         if state.phase == .recording {
-            state.stopRecording()
+            // ⌥-click pauses/resumes instead of stopping.
+            if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
+                state.togglePause()
+            } else {
+                state.stopRecording()
+            }
+            return
+        }
+        if state.phase == .countdown {
+            state.cancelCountdown()
             return
         }
         if NSApp.currentEvent?.type == .rightMouseUp {
@@ -234,6 +249,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         case .selecting:
             state.cancelSelection()
+        case .countdown:
+            state.cancelCountdown()
         case .finishing:
             break
         }
@@ -267,12 +284,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let stop = item("Stop Recording", action: #selector(stopFromMenu))
             stop.setShortcut(for: .stopRecording)
             menu.addItem(stop)
+            // ⌥ swaps it for pause/resume — same in-place mechanism as the
+            // mode entries (isAlternate would need a shared key equivalent).
+            modeEntries.removeAll()
+            modeEntries.append(ModeEntry(
+                item: stop,
+                plainTitle: "Stop Recording",
+                configuredTitle: state.isUserPaused ? "Resume Recording" : "Pause Recording",
+                pickerAction: #selector(stopFromMenu),
+                instantAction: #selector(togglePauseFromMenu)))
+            applyAlt(NSEvent.modifierFlags.contains(.option))
         case .finishing:
             let saving = item(state.finishingLabel.capitalized, action: nil)
             saving.isEnabled = false
             menu.addItem(saving)
         case .selecting:
             menu.addItem(item("Cancel Selection", action: #selector(cancelSelection)))
+        case .countdown:
+            menu.addItem(item("Cancel Countdown", action: #selector(cancelCountdown)))
         case .idle:
             menu.addItem(NSMenuItem.sectionHeader(title: "Start Recording"))
             // Each mode gets a plain entry (ask me) and an ⌥ alternate that
@@ -532,7 +561,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func cancelSelection() { state.cancelSelection() }
 
+    @objc private func cancelCountdown() { state.cancelCountdown() }
+
     @objc private func stopFromMenu() { state.stopRecording() }
+
+    @objc private func togglePauseFromMenu() { state.togglePause() }
 
     @objc private func openRecording(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }

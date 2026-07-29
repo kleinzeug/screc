@@ -1,3 +1,4 @@
+import AVFoundation
 import KeyboardShortcuts
 import ServiceManagement
 import SwiftUI
@@ -9,6 +10,13 @@ struct SettingsView: View {
     @AppStorage(DefaultsKey.captureSystemAudio) private var captureSystemAudio = true
     @AppStorage(DefaultsKey.discardShortRecordings) private var discardShortRecordings = true
     @AppStorage(DefaultsKey.notifyOnFinish) private var notifyOnFinish = true
+    @AppStorage(DefaultsKey.countdownEnabled) private var countdownEnabled = false
+    @AppStorage(DefaultsKey.micEnabled) private var micEnabled = false
+    @AppStorage(DefaultsKey.micDeviceID) private var micDeviceID = ""
+    @AppStorage(DefaultsKey.micGain) private var micGain = 1.0
+    @StateObject private var micMonitor = MicLevelMonitor()
+    @State private var micDevices: [MicDevices.Device] = []
+    @State private var micDenied = false
     @AppStorage(DefaultsKey.storageChoice) private var storageChoice = "tmp"
     @AppStorage(DefaultsKey.customStoragePath) private var customStoragePath = ""
     @AppStorage(DefaultsKey.fileNamePattern) private var fileNamePattern = "screc-{date}-{time}"
@@ -157,6 +165,49 @@ struct SettingsView: View {
                 Toggle("Capture system audio", isOn: $captureSystemAudio)
                 Toggle("Discard recordings shorter than 3 seconds",
                        isOn: $discardShortRecordings)
+                Toggle("Countdown before recording (3 s)", isOn: $countdownEnabled)
+            }
+
+            Section("Microphone") {
+                Toggle("Record microphone", isOn: micEnabledBinding)
+                if micEnabled {
+                    if micDenied {
+                        HStack(spacing: 8) {
+                            Text("Microphone access for screc is turned off in System Settings.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Button("Open System Settings…") {
+                                NSWorkspace.shared.open(URL(string:
+                                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                            }
+                            .controlSize(.small)
+                        }
+                    } else {
+                        Picker("Input device", selection: $micDeviceID) {
+                            Text("System Default").tag("")
+                            if !micDevices.isEmpty { Divider() }
+                            ForEach(micDevices) { device in
+                                Text(device.name).tag(device.id)
+                            }
+                        }
+                        LabeledContent("Microphone level") {
+                            HStack(spacing: 8) {
+                                Slider(value: $micGain, in: 0...1)
+                                    .frame(width: 140)
+                                Text("\(Int(micGain * 100)) %")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 44, alignment: .trailing)
+                            }
+                        }
+                        LabeledContent("Input meter") {
+                            MicMeterBar(level: micMonitor.level)
+                        }
+                    }
+                    Text("Mixed with the system audio when the recording stops. GIF recordings have no audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Output Preset") {
@@ -440,6 +491,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { refreshMicSection() }
+        .onDisappear { micMonitor.stop() }
+        .onChange(of: micEnabled) { refreshMicSection() }
+        .onChange(of: micDeviceID) { refreshMicSection() }
         .onChange(of: config) {
             PresetLibrary.setCurrent(config)
         }
@@ -500,6 +555,44 @@ struct SettingsView: View {
     private func refreshNotificationStatus() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         notificationsDenied = settings.authorizationStatus == .denied
+    }
+
+    // MARK: - Microphone
+
+    /// Enabling asks for the permission right then (the spec: the section
+    /// "only asks for permissions when it's enabled").
+    private var micEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { micEnabled },
+            set: { enabled in
+                micEnabled = enabled
+                if !enabled { micMonitor.stop() }
+                // onChange(of: micEnabled) drives the rest, including the
+                // permission request for .notDetermined.
+            })
+    }
+
+    private func refreshMicSection() {
+        guard micEnabled else {
+            micMonitor.stop()
+            return
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            micDenied = false
+            micDevices = MicDevices.all()
+            micMonitor.start(deviceUID: micDeviceID)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                Task { @MainActor in
+                    micDenied = !granted
+                    if granted { refreshMicSection() }
+                }
+            }
+        default:
+            micDenied = true
+            micMonitor.stop()
+        }
     }
 
     private func chooseCustomFolder() {
@@ -767,6 +860,24 @@ private struct NameField: View {
             .padding(.horizontal, 4)
             .background(RoundedRectangle(cornerRadius: 5)
                 .fill(Color.primary.opacity(focused ? 0.10 : 0.04)))
+    }
+}
+
+/// Live input-level bar for the microphone section.
+private struct MicMeterBar: View {
+    var level: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule()
+                    .fill(level > 0.85 ? Color.red : Color.green)
+                    .frame(width: max(level > 0.01 ? 4 : 0, geo.size.width * level))
+                    .animation(.linear(duration: 0.08), value: level)
+            }
+        }
+        .frame(width: 160, height: 8)
     }
 }
 
