@@ -21,6 +21,13 @@ First public release.
 - **Sub-regions track their window** through moves and resizes.
 - **Recording indicator**: a click-through passe-partout dims everything
   except what is being captured, and follows the window.
+- **Pause and resume** — ⌥-click the menu-bar item (or ⌘⌥⇧0) while
+  recording; pauses become clean cuts, not frozen video.
+- **Microphone capture** (off by default): pick a device, set its level in
+  the mix, watch a live input meter — the voice is mixed with the system
+  audio into a single track when the recording stops.
+- **Countdown before recording** (off by default): a 3-2-1 overlay that
+  never steals focus from what you are about to record.
 - Accidental takes under three seconds are discarded automatically
   (configurable).
 
@@ -53,14 +60,22 @@ First public release.
   coordinates, and a click to start from the whole screen.
 - **Recent recordings** in the menu: click to open in QuickTime or Preview,
   ⌘-click to reveal in Finder, ⌥-click to convert to GIF or edit its frames.
-  Clear All reports the disk space it frees.
-- Configurable storage (`/tmp/screc` by default, so recordings clean
-  themselves up on reboot), file-name patterns, launch at login, and a
-  notification when a recording is saved.
+  Recordings beyond the list stay reachable in an **Older Recordings**
+  submenu; Clear All reports the disk space it frees, asks first on
+  permanent storage locations, and moves files to the Trash there instead
+  of deleting.
+- **Quitting is always safe**: a quit (or logout) during a recording stops
+  and finalizes the file before the app exits.
+- Long GIF conversions show live progress in the menu bar and warn before
+  converting very long recordings.
+- Configurable storage (self-cleaning temporary storage by default —
+  recordings disappear after a reboot), file-name patterns, launch at
+  login, and a notification when a recording is saved.
 
 ### Under the hood
 
 - Native Swift throughout — ScreenCaptureKit and AVFoundation, no bundled
-  ffmpeg, no Electron.
+  ffmpeg, no Electron. No telemetry, no network calls.
 - Requires macOS 15; builds with Xcode 16.4 or newer.
-- Distributed as source (MIT) and as a notarized Developer ID build.
+- Distributed as source (MIT) and through the Mac App Store; the store
+  build runs fully sandboxed.

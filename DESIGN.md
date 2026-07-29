@@ -61,7 +61,7 @@ Pure native Swift. **No ffmpeg** — see §5 for why it adds nothing here.
 | Settings | SwiftUI `Form.formStyle(.grouped)`, `@AppStorage` |
 | Hotkeys | [sindresorhus/KeyboardShortcuts](https://github.com/sindresorhus/keyboardshortcuts) (MIT, no extra TCC permission, MAS-safe) |
 | Login item | `SMAppService.mainApp` (macOS 13+) |
-| Updates (Developer ID build) | Sparkle 2 (MIT) |
+| Updates | Mac App Store (decided 2026-07-28: binaries ship ONLY via MAS — Sparkle dropped; it is unnecessary there and forbidden in sandboxed store builds) |
 
 **Minimum deployment target: macOS 15.0.** Rationale: dev machine runs 15.7;
 macOS 15 shipped Sept 2024; targeting 15 gives ScreenCaptureKit microphone
@@ -558,17 +558,22 @@ differentiate on convenience, not limits.
   icon ✅, description, keywords, privacy labels), and the identity decisions:
   final app name (see §9 collisions), public author vs. team/label name,
   domain (screc.app looked unregistered), support e-mail, pricing.
-- **M5 — Developer ID release** (in progress, 2026-07-28): signing and export
-  verified end to end — Developer ID certificate, hardened runtime, secure
-  timestamp; `tools/release.sh` archives → exports → notarizes → staples →
-  Gatekeeper-checks → packages, documented in docs/RELEASING.md. Account
-  information is kept out of the repository via an optional-include xcconfig.
-  Outstanding: notarytool credentials (needs an app-specific password), the
-  first notarized build, and auto-updates (Sparkle) before there are users to
-  strand.
-- **M6 — Mac App Store**: sandbox storage variant, bookmark-based custom
-  folders, review prep (2.5.14 consent copy), TestFlight beta, listing
-  (screenshots, ASO against the subscription-trap field).
+- **M5 — Developer ID tooling** ✅-as-internal (2026-07-29, demoted by the
+  App-Store-only distribution decision): signing and export verified end to
+  end — Developer ID certificate, hardened runtime, secure timestamp;
+  `tools/release.sh` (team id read from the gitignored local.xcconfig)
+  archives → exports → notarizes → staples → packages. Kept for handing out
+  test builds; **off the release path**. Sparkle dropped entirely — the App
+  Store handles updates, and sandboxed store builds may not self-update.
+- **M6 — Mac App Store** (code side ✅ 2026-07-29 — THE release gate):
+  `AppStore` build configuration (sandbox entitlements via committed
+  account-free appstore.xcconfig, Apple Distribution), sandbox storage
+  (container tmp + boot-time purge re-creating the /tmp promise;
+  bookmark-based custom folders; no movies entitlement), store metadata
+  (category Video, export-compliance exempt, sanitized x.y.z versions +
+  UTC-timestamp build numbers), debug mode compiled out. Remaining is
+  process, not code: App Store Connect record + assets, review notes
+  (2.5.14 consent copy), TestFlight pass, Tahoe verification, listing.
 
 ## 11. Risks & open questions
 

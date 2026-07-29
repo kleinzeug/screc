@@ -485,12 +485,12 @@ struct SettingsView: View {
                 }
                 LabeledContent("Author", value: "Philipp Holzschneider")
                 Text("""
-                **License** — Binary distributions obtained through Apple's \
-                App Store are licensed under their App Store purchase terms. \
-                The source code is MIT-licensed for contributors: if you \
-                forked or cloned the repository and built screc yourself, you \
-                agree to offer future code changes back upstream via pull \
-                requests to the repository you originally obtained it from.
+                **License** — The source is MIT: clone it, build it, change \
+                it, ship your fork. Binaries from the Mac App Store are \
+                covered by Apple's standard EULA and sold for a small fee — \
+                buying is never required. If you improve screc, sending the \
+                change back upstream as a pull request is appreciated: \
+                a request, not a condition.
                 """)
                 .font(.caption)
                 .foregroundStyle(.secondary)

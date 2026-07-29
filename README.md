@@ -47,16 +47,16 @@ and [CHANGELOG.md](CHANGELOG.md) for what each release contains.
 stays free — the source here is complete, with no crippled features and no
 paywalled build. Instructions below.
 
-**Or download a build**: notarized, signed, opens without Gatekeeper
-warnings — see [Releases](https://github.com/kleinzeug/screc/releases).
-
-**Or buy it** (planned): a Mac App Store release for a small one-time price,
-for people who would rather not touch a compiler. Never a subscription. Nobody
-who is willing to run `xcodegen generate` ever needs to pay for this.
+**Or buy it on the Mac App Store** (submission in progress): a small one-time
+price for people who would rather not touch a compiler. Never a subscription.
+Binaries ship exclusively through the App Store — building from source is,
+and stays, the free lane. Nobody who is willing to run `xcodegen generate`
+ever needs to pay for this.
 
 ## Building
 
-Requirements: **macOS 15+**, **Xcode 26+**.
+Requirements: **macOS 15+**, **Xcode 16.4+** (what CI builds with; newer
+versions work too).
 
 The Xcode project is generated from `project.yml` with
 [XcodeGen](https://github.com/yonaskolb/XcodeGen), so the `.xcodeproj` stays out
@@ -94,6 +94,9 @@ If the menu-bar icon shows a hollow dot, permission is still missing. Enable
 ***screc*** under **System Settings → Privacy & Security → Screen & System Audio
 Recording** and relaunch.
 
+macOS also re-confirms this consent periodically for every screen-recording
+app — the recurring system prompt is the OS's doing, not ***screc***'s.
+
 ### Signing
 
 A clean clone builds **ad-hoc signed** — no Apple account needed, which is
@@ -117,9 +120,11 @@ locally — see [docs/RELEASING.md](docs/RELEASING.md).)
 
 ### Versioning
 
-Builds stamp `CFBundleShortVersionString` from `git describe --tags --dirty`, so
-every build identifies its exact commit — a clean tag builds as `0.2.0`, three
-commits later as `0.2.0-3-gabc1234`, uncommitted changes as `…-dirty`.
+Debug builds stamp `CFBundleShortVersionString` from `git describe --tags
+--dirty`, so every build identifies its exact commit — a clean tag builds as
+`1.0.0`, three commits later as `1.0.0-3-gabc1234`, uncommitted changes as
+`…-dirty`. Release and App Store builds sanitize that to plain `x.y.z` (App
+Store Connect rejects the suffixes) and stamp a UTC-timestamp build number.
 
 ## Contributing
 

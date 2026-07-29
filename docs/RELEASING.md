@@ -1,83 +1,74 @@
 # Releasing screc
 
-Direct-download builds are signed with a **Developer ID Application**
-certificate and notarized by Apple, so Gatekeeper opens them without the
-"unidentified developer" warning. Everything after the one-time setup is a
-single command.
+Binaries ship **exclusively through the Mac App Store** (decision of
+2026-07-28): source on GitHub for anyone who builds it themselves, the store
+build for anyone who would rather pay a small one-time price than compile.
+No binaries are attached to GitHub Releases — a free download would defeat
+the two-lane model. Updates are handled by the App Store; there is no
+in-app updater, deliberately.
 
-## One-time setup
+Account information never lives in the repository: the team id sits in the
+gitignored `Config/local.xcconfig` (copy `Config/local.xcconfig.example`),
+and both signing xcconfigs include it optionally.
 
-### 1. Certificates
+## App Store release (the release path)
 
-Xcode → **Settings → Accounts** → **+** → sign in with the Apple ID that
-holds the Developer Program membership. Select the team → **Manage
-Certificates…** → **+** and create both:
+The `AppStore` build configuration carries the sandbox entitlements
+(`Config/screc-mas.entitlements`) and Apple Distribution signing
+(`Config/appstore.xcconfig`). Store builds sanitize the version to `x.y.z`
+and stamp a UTC-timestamp `CFBundleVersion`, so every upload has a strictly
+increasing build number with zero bookkeeping.
 
-- **Apple Development** — for everyday builds. Worth having on its own: the
-  screen-recording permission is tied to the signing identity, so an
-  ad-hoc-signed build asks for it again after every rebuild, while a
-  consistently signed one does not.
-- **Developer ID Application** — for distribution.
-
-Note the **Team ID** (Xcode shows it next to the team name; it also appears
-at developer.apple.com → Membership).
-
-### 2. Point the build at your team
-
-Account information stays out of the repository. Copy the example and fill
-in your team id — the file is gitignored:
+One-time: an **Apple Distribution** certificate (Xcode → Settings →
+Accounts → Manage Certificates), and the app record on App Store Connect
+(bundle id `app.screc`).
 
 ```sh
-cp Config/local.xcconfig.example Config/local.xcconfig
-$EDITOR Config/local.xcconfig      # DEVELOPMENT_TEAM = YOURTEAMID
+git tag v1.0.0                      # the version is stamped from `git describe`
 xcodegen generate
+xcodebuild archive \
+  -project screc.xcodeproj -scheme screc -configuration AppStore \
+  -archivePath dist/screc-appstore.xcarchive
+xcodebuild -exportArchive \
+  -archivePath dist/screc-appstore.xcarchive \
+  -exportOptionsPlist Config/ExportOptionsAppStore.plist \
+  -exportPath dist/appstore
 ```
 
-`Config/signing.xcconfig` includes it optionally, so a clone without it
-still builds (ad-hoc). `tools/release.sh` reads the team id from the same
-file.
+`ExportOptionsAppStore.plist` uploads straight to App Store Connect
+(`app-store-connect` / `upload`); Apple's own validation and notarization
+run as part of processing. Alternatively archive in Xcode and use the
+Organizer. Then: TestFlight pass → submit for review. A GitHub *release*
+(tag + notes, **no binary attached**) records which commit each store
+version corresponds to.
 
-### 3. Notarization credentials
+## Developer ID builds (internal / test builds only)
 
-Notarization needs an **app-specific password**, not your Apple ID password.
-Create one at [appleid.apple.com](https://appleid.apple.com) → Sign-In and
-Security → App-Specific Passwords. Then store it once in the keychain:
+`tools/release.sh` still produces a signed, notarized, stapled zip — useful
+for handing a build to a tester without TestFlight. It is not a
+distribution channel.
+
+Prerequisites: a **Developer ID Application** certificate, and a notarytool
+keychain profile named `screc`:
 
 ```sh
 xcrun notarytool store-credentials screc \
-  --apple-id you@example.com \
-  --team-id YOURTEAMID \
-  --password abcd-efgh-ijkl-mnop
+  --apple-id you@example.com --team-id YOURTEAMID \
+  --password <app-specific password from appleid.apple.com>
 ```
-
-The profile name `screc` is what `tools/release.sh` looks for.
-
-## Cutting a release
 
 ```sh
-git tag v0.3.0            # the version is stamped from `git describe`
-tools/release.sh
+tools/release.sh                  # archive → export → notarize → staple → zip
+tools/release.sh --skip-notarize  # local dry run, no Apple round-trip
 ```
 
-The script archives a Release build, exports it with the Developer ID
-certificate (hardened runtime, secure timestamp), verifies the signature,
-submits it to Apple and waits, staples the ticket to the app, asks
-Gatekeeper for a verdict, and leaves `dist/screc-<version>.zip` ready to
-upload.
+## Why keep a stable dev identity (Config/local.xcconfig)
 
-`tools/release.sh --skip-notarize` does everything except the Apple
-round-trip — useful for checking that signing and export work.
-
-## Publishing
-
-Attach the zip to a GitHub release on the tag:
-
-```sh
-gh release create v0.3.0 dist/screc-0.3.0.zip \
-  --title "screc 0.3.0" --notes "…"
-```
-
-Then update the download link on [screc.app](https://screc.app).
+macOS ties the screen-recording permission to the code-signing identity: an
+ad-hoc build gets a fresh identity every rebuild and is re-prompted every
+time, while a consistent **Apple Development** identity keeps the grant.
+Contributors without any Apple account still build ad-hoc out of the box —
+that path is what CI exercises.
 
 ## Troubleshooting
 
@@ -90,10 +81,6 @@ should list it.
 ```sh
 xcrun notarytool log <submission-id> --keychain-profile screc
 ```
-
-The usual causes are a missing hardened runtime, a missing secure timestamp,
-or an embedded binary that is not signed — the script sets the first two and
-Xcode signs the one bundled framework.
 
 **Gatekeeper still warns after stapling** — the quarantine attribute on your
 local copy is stale. Test the way a downloader would: unzip a fresh copy in
