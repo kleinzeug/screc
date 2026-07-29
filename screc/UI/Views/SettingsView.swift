@@ -416,8 +416,14 @@ struct SettingsView: View {
 
             Section("Storage") {
                 Picker("Location", selection: $storageChoice) {
-                    Text("/tmp/screc — cleared on reboot").tag("tmp")
-                    Text("~/Movies/screc").tag("movies")
+                    if RecordingStore.isSandboxed {
+                        // The sandbox has no /tmp and no blanket ~/Movies
+                        // access; the container temp mimics the boot wipe.
+                        Text("Temporary — cleared after restart").tag("tmp")
+                    } else {
+                        Text("/tmp/screc — cleared on reboot").tag("tmp")
+                        Text("~/Movies/screc").tag("movies")
+                    }
                     Text("Custom folder").tag("custom")
                 }
                 if storageChoice == "custom" {
@@ -491,7 +497,14 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { refreshMicSection() }
+        .onAppear {
+            // A "movies" choice can't exist in the sandboxed flavor (no
+            // blanket ~/Movies access) — normalize a migrated preference.
+            if RecordingStore.isSandboxed && storageChoice == "movies" {
+                storageChoice = "tmp"
+            }
+            refreshMicSection()
+        }
         .onDisappear { micMonitor.stop() }
         .onChange(of: micEnabled) { refreshMicSection() }
         .onChange(of: micDeviceID) { refreshMicSection() }
@@ -602,6 +615,9 @@ struct SettingsView: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
+            // Persists path + security-scoped bookmark (the sandbox forgets
+            // the NSOpenPanel grant at quit; the bookmark survives).
+            RecordingStore.rememberCustomFolder(url)
             customStoragePath = url.path
         }
     }

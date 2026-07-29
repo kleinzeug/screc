@@ -16,6 +16,7 @@ enum DefaultsKey {
     static let customPresets = "customPresets"
     static let storageChoice = "storageChoice"
     static let customStoragePath = "customStoragePath"
+    static let customStorageBookmark = "customStorageBookmark"
     static let fileNamePattern = "fileNamePattern"
     static let notifyOnFinish = "notifyOnFinish"
     static let countdownEnabled = "countdownEnabled"
@@ -69,8 +70,15 @@ enum Prefs {
     }
     /// Development escape hatch: pretend the screen-recording permission was
     /// granted and record black frames, so the UI can be exercised without
-    /// re-granting access after every rebuild. Never enabled by default.
+    /// re-granting access after every rebuild. Compiled out of Release and
+    /// App Store builds entirely — a user stuck in it would get silently
+    /// black recordings, and a hidden permission bypass is not something to
+    /// ship.
     static var debugMode: Bool {
+        #if DEBUG
         UserDefaults.standard.bool(forKey: DefaultsKey.debugMode)
+        #else
+        false
+        #endif
     }
 }

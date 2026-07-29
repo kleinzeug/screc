@@ -4,6 +4,10 @@
 CODE_SIGN_STYLE = Manual
 CODE_SIGN_IDENTITY = -
 DEVELOPMENT_TEAM =
+// Entitlements live here (not in project.yml) so the AppStore configuration
+// can swap in the sandboxed set — project-level settings would override
+// every xcconfig.
+CODE_SIGN_ENTITLEMENTS = Config/screc-dev.entitlements
 
 // Optional include (note the "?"): silently skipped when absent. Put your
 // own DEVELOPMENT_TEAM in Config/local.xcconfig — it is gitignored, and

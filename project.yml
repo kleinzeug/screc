@@ -3,10 +3,16 @@ options:
   createIntermediateGroups: true
   deploymentTarget:
     macOS: "15.0"
+# AppStore is a Release-type configuration with sandbox entitlements and
+# Apple Distribution signing (Config/appstore.xcconfig).
+configs:
+  Debug: debug
+  Release: release
+  AppStore: release
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: 0.2.0
+    MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 1
 packages:
   KeyboardShortcuts:
@@ -23,20 +29,37 @@ targets:
     configFiles:
       Debug: Config/signing.xcconfig
       Release: Config/signing.xcconfig
+      AppStore: Config/appstore.xcconfig
     dependencies:
       - package: KeyboardShortcuts
     scheme:
       testTargets:
         - screcTests
     postBuildScripts:
-      - name: Stamp git version
+      - name: Stamp version and build number
         basedOnDependencyAnalysis: false
         script: |
           version=$(git -C "$SRCROOT" describe --tags --always --dirty 2>/dev/null || echo "$MARKETING_VERSION")
           version=${version#v}
+          # Debug keeps the full git-describe string (identifies the exact
+          # commit); Release/AppStore sanitize to x.y.z — App Store Connect
+          # rejects suffixes like -3-gabc1234 or -dirty.
+          if [ "$CONFIGURATION" != "Debug" ]; then
+            version=$(printf '%s' "$version" | sed -E 's/^([0-9]+(\.[0-9]+){1,2}).*$/\1/')
+            case "$version" in
+              *.*) ;;
+              *) version="$MARKETING_VERSION" ;;
+            esac
+          fi
+          # Build numbers must strictly increase per upload: UTC timestamp —
+          # monotonic, zero bookkeeping, immune to history rewrites.
+          build=$(date -u +%Y%m%d%H%M)
           plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
           if [ -f "$plist" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build" "$plist"
+            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$plist" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$plist"
           fi
     settings:
       base:
@@ -49,11 +72,14 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: screc
         # Menu-bar-only app: no Dock icon, no app menu.
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Philipp Holzschneider"
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "screc records the microphone only while you are recording, and only when microphone capture is enabled in Settings."
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.video
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements
+        # CODE_SIGN_ENTITLEMENTS deliberately NOT set here: it lives in the
+        # xcconfigs (dev entitlements in signing.xcconfig, sandbox set in
+        # appstore.xcconfig) — a project-level value would override both.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
   # Hermetic unit tests: no app host, no GUI session needed (CI-safe). The

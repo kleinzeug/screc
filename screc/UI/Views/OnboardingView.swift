@@ -5,10 +5,17 @@ struct OnboardingView: View {
     var onFinish: () -> Void
 
     /// The debug-mode button is deliberately hard to hit by accident:
-    /// hover the permission card *and* hold ⌥.
+    /// hover the permission card *and* hold ⌥. Debug builds only — the
+    /// escape hatch is compiled out of anything shipped.
     @State private var hoveringPermissionCard = false
     @State private var optionHeld = false
-    private var showsDebugToggle: Bool { hoveringPermissionCard && optionHeld }
+    private var showsDebugToggle: Bool {
+        #if DEBUG
+        hoveringPermissionCard && optionHeld
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 20) {

@@ -2,8 +2,11 @@ import Foundation
 
 /// Recordings live in /tmp/screc by default: macOS wipes /private/tmp at boot
 /// and a daily tmp_cleaner daemon removes stale files, so disk space frees
-/// itself. The recents list is persisted in UserDefaults and validated against
-/// disk, since the files can vanish underneath us by design.
+/// itself. The sandboxed (App Store) build cannot reach /tmp — it uses the
+/// container's temporary directory instead and re-creates the boot-wipe
+/// semantics itself by deleting recordings from before the current boot at
+/// launch. The recents list is persisted in UserDefaults and validated
+/// against disk, since the files can vanish underneath us by design.
 @MainActor
 final class RecordingStore {
     struct Recording: Codable, Equatable {
@@ -15,18 +18,86 @@ final class RecordingStore {
         var name: String { url.lastPathComponent }
     }
 
-    /// Resolved from settings: /tmp (self-cleaning), ~/Movies/screc, or a
-    /// custom folder.
+    /// True in the sandboxed (App Store) build. Runtime detection rather
+    /// than a build flag: the sandbox is what actually decides which paths
+    /// are reachable.
+    static let isSandboxed =
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+
+    /// Resolved from settings: the self-cleaning temp location, ~/Movies/screc
+    /// (self-built only — the sandbox offers no blanket Movies access), or a
+    /// custom folder (bookmark-backed under the sandbox).
     static var directory: URL {
         switch Prefs.storageChoice {
-        case "movies":
+        case "movies" where !isSandboxed:
             return FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Movies/screc", isDirectory: true)
-        case "custom" where !Prefs.customStoragePath.isEmpty:
-            return URL(fileURLWithPath: Prefs.customStoragePath, isDirectory: true)
+        case "custom":
+            if let custom = customDirectory() { return custom }
+            return temporaryDirectory
         default:
-            return URL(fileURLWithPath: "/tmp/screc", isDirectory: true)
+            return temporaryDirectory
         }
+    }
+
+    private static var temporaryDirectory: URL {
+        isSandboxed
+            ? FileManager.default.temporaryDirectory
+                .appendingPathComponent("screc", isDirectory: true)
+            : URL(fileURLWithPath: "/tmp/screc", isDirectory: true)
+    }
+
+    // MARK: Custom folder (security-scoped under the sandbox)
+
+    /// Resolved once per launch; the security scope stays open for the
+    /// process lifetime (recordings can land there at any time).
+    private static var resolvedCustomDirectory: URL??
+
+    static func customDirectory() -> URL? {
+        if let cached = resolvedCustomDirectory { return cached }
+        let url = resolveCustomDirectory()
+        resolvedCustomDirectory = url
+        return url
+    }
+
+    private static func resolveCustomDirectory() -> URL? {
+        if let data = UserDefaults.standard.data(forKey: DefaultsKey.customStorageBookmark) {
+            var stale = false
+            if let url = try? URL(resolvingBookmarkData: data,
+                                  options: [.withSecurityScope],
+                                  relativeTo: nil,
+                                  bookmarkDataIsStale: &stale) {
+                if stale, let fresh = try? url.bookmarkData(
+                        options: [.withSecurityScope],
+                        includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    UserDefaults.standard.set(fresh, forKey: DefaultsKey.customStorageBookmark)
+                }
+                if !url.startAccessingSecurityScopedResource() {
+                    Log.store.notice("security scope not granted for \(url.path) — trying anyway")
+                }
+                return url
+            }
+            Log.store.error("custom-folder bookmark failed to resolve — falling back to the path")
+        }
+        let path = Prefs.customStoragePath
+        return path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
+    }
+
+    /// Called by Settings when the user picks a folder: persist path (for
+    /// display) + security-scoped bookmark (for access across relaunches in
+    /// the sandbox — a bare path dies with the NSOpenPanel grant).
+    static func rememberCustomFolder(_ url: URL) {
+        UserDefaults.standard.set(url.path, forKey: DefaultsKey.customStoragePath)
+        do {
+            let bookmark = try url.bookmarkData(options: [.withSecurityScope],
+                                                includingResourceValuesForKeys: nil,
+                                                relativeTo: nil)
+            UserDefaults.standard.set(bookmark, forKey: DefaultsKey.customStorageBookmark)
+        } catch {
+            UserDefaults.standard.removeObject(forKey: DefaultsKey.customStorageBookmark)
+            Log.store.error("could not create folder bookmark: \(error.localizedDescription)")
+        }
+        resolvedCustomDirectory = nil
     }
 
     private static let maxEntries = 10
@@ -39,8 +110,37 @@ final class RecordingStore {
     var activeRecordingURL: URL?
 
     init() {
+        purgePreBootRecordings()
         load()
         validate()
+    }
+
+    /// Sandbox stand-in for /tmp's boot wipe: recordings in the container's
+    /// temp location that predate the current boot are deleted at launch.
+    private func purgePreBootRecordings() {
+        guard Self.isSandboxed, Prefs.storageChoice == "tmp",
+              let boot = Self.bootDate() else { return }
+        let extensions: Set<String> = ["mp4", "gif"]
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: Self.directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])
+        else { return }
+        for url in entries where extensions.contains(url.pathExtension.lowercased()) {
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            if modified < boot {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
+    private static func bootDate() -> Date? {
+        var bootTime = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0,
+              bootTime.tv_sec > 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(bootTime.tv_sec))
     }
 
     var totalBytes: Int64 {
