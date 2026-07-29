@@ -449,24 +449,12 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         }
     }
 
-    /// Native pixels capped to max width/height (caps only shrink, never
-    /// upscale; aspect preserved), rounded to even dimensions (H.264 dislikes
-    /// odd sizes).
+    /// See OutputSizing.pixelSize — extracted so the unit tests can compile
+    /// the math without the ScreenCaptureKit dependency chain.
     static func outputPixelSize(contentPoints: CGSize, scale: CGFloat,
                                 maxWidth: Int?, maxHeight: Int?) -> (Int, Int) {
-        var width = max(contentPoints.width * scale, 2)
-        var height = max(contentPoints.height * scale, 2)
-        var factor: CGFloat = 1
-        if let cap = maxWidth.map(CGFloat.init), cap > 0, width > cap {
-            factor = min(factor, cap / width)
-        }
-        if let cap = maxHeight.map(CGFloat.init), cap > 0, height > cap {
-            factor = min(factor, cap / height)
-        }
-        width *= factor
-        height *= factor
-        return (max(2, Int(width.rounded()) & ~1),
-                max(2, Int(height.rounded()) & ~1))
+        OutputSizing.pixelSize(contentPoints: contentPoints, scale: scale,
+                               maxWidth: maxWidth, maxHeight: maxHeight)
     }
 
     private func startStatsTicker() {

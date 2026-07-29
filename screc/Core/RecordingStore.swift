@@ -51,26 +51,7 @@ final class RecordingStore {
         let directory = Self.directory
         try? FileManager.default.createDirectory(at: directory,
                                                  withIntermediateDirectories: true)
-        let date = DateFormatter()
-        date.dateFormat = "yyyyMMdd"
-        let time = DateFormatter()
-        time.dateFormat = "HHmmss"
-        // Pinned locale: the user's locale may render format patterns with
-        // non-Latin digits (Arabic-Indic, Devanagari, …) — file names should
-        // be ASCII everywhere.
-        for formatter in [date, time] {
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-        }
-        let now = Date()
-        var name = Prefs.fileNamePattern
-            .replacingOccurrences(of: "{date}", with: date.string(from: now))
-            .replacingOccurrences(of: "{time}", with: time.string(from: now))
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .trimmingCharacters(in: .whitespaces)
-        if name.isEmpty {
-            name = "screc-\(date.string(from: now))-\(time.string(from: now))"
-        }
+        let name = RecordingNames.make(pattern: Prefs.fileNamePattern, now: Date())
         // Second recording within the same second: suffix instead of letting
         // the engine overwrite the first.
         var url = directory.appendingPathComponent("\(name).\(fileExtension)")

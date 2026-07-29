@@ -34,6 +34,16 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project screc.xcodeproj \
+            -scheme screc \
+            -configuration Debug \
+            -derivedDataPath build-tests \
+            test
+
       - name: Build (Release)
         # No signing overrides: Config/signing.xcconfig defaults to ad-hoc and
         # Config/local.xcconfig is untracked, so this is exactly what a

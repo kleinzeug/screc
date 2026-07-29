@@ -67,15 +67,12 @@ enum GIFConverter {
         var nextKeepTime = 0.0
         var framesAdded = 0
         var pending: (image: CGImage, pts: Double)?
-        // GIF stores delays in centiseconds; carry the rounding remainder so
-        // quantization doesn't accumulate into drift on long clips.
-        var carry = 0.0
+        // GIF stores delays in centiseconds; the quantizer carries the
+        // rounding remainder so long clips don't drift.
+        var quantizer = GIFDelayQuantizer()
 
         func flush(_ entry: (image: CGImage, pts: Double), until nextPTS: Double) {
-            let target = max(nextPTS - entry.pts, 0) + carry
-            let centiseconds = max(2, Int((target * 100).rounded()))
-            let delay = Double(centiseconds) / 100
-            carry = target - delay
+            let delay = quantizer.quantize(nextPTS - entry.pts)
             CGImageDestinationAddImage(destination, entry.image, [
                 kCGImagePropertyGIFDictionary as String: [
                     kCGImagePropertyGIFDelayTime as String: delay,
@@ -112,7 +109,7 @@ enum GIFConverter {
             pending = (cgImage, pts)
             // Snap the grid to the timeline (never += per kept frame): a
             // sparse source must not pull the grid along with it.
-            nextKeepTime = (floor(pts / step) + 1) * step
+            nextKeepTime = GIFTiming.nextGridTime(after: pts, step: step)
         }
         if let entry = pending {
             // The last frame has no successor: give it the remaining movie

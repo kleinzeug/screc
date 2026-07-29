@@ -25,7 +25,9 @@ targets:
       Release: Config/signing.xcconfig
     dependencies:
       - package: KeyboardShortcuts
-    scheme: {}
+    scheme:
+      testTargets:
+        - screcTests
     postBuildScripts:
       - name: Stamp git version
         basedOnDependencyAnalysis: false
@@ -52,3 +54,19 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Config/screc-dev.entitlements
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  # Hermetic unit tests: no app host, no GUI session needed (CI-safe). The
+  # pure-logic sources under test are compiled directly into the bundle.
+  screcTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: screcTests
+      - path: screc/Core/OutputSizing.swift
+      - path: screc/Core/RecordingNames.swift
+      - path: screc/Core/GIFTiming.swift
+      - path: screc/UI/RectAdjust.swift
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.screc.tests
