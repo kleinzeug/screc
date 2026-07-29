@@ -5,7 +5,11 @@ import UniformTypeIdentifiers
 /// Frame-level access to an animated GIF for the in-app frame editor
 /// (Preview can only view frames, not delete them — verified during design
 /// research, hence this exists).
-struct GIFDocument {
+/// @unchecked Sendable: an immutable value type whose only reference-typed
+/// content is CGImage, which is itself immutable and safe to read from any
+/// thread. Load/save run detached (they decode every frame) and hand the
+/// document back to the main actor.
+struct GIFDocument: @unchecked Sendable {
     struct Frame: Identifiable {
         let id: Int
         let thumbnail: CGImage

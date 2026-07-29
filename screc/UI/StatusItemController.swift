@@ -50,16 +50,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.imagePosition = .imageTrailing
             button.attributedTitle = Self.statsTitle(state.stats)
             button.toolTip = "screc — click to stop recording"
+            button.setAccessibilityLabel(state.stats.isPaused
+                ? "screc, recording paused, click to stop"
+                : "screc, recording, click to stop")
         case .finishing:
             button.image = Icons.saving
             button.imagePosition = .imageTrailing
             button.attributedTitle = Self.smallTitle(state.finishingLabel + " ")
             button.toolTip = "screc — finalizing recording"
+            button.setAccessibilityLabel("screc, \(state.finishingLabel)")
         case .selecting:
             button.image = Icons.selecting
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
             button.toolTip = "screc — make a selection (Esc cancels)"
+            button.setAccessibilityLabel("screc, choosing what to record")
         case .idle:
             button.image = permissions.granted ? Icons.readyRedDot : Icons.recordNoPermission
             button.imagePosition = .imageOnly
@@ -67,6 +72,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.toolTip = permissions.granted
                 ? "screc — right-click to record \(modeDescription), left-click for the menu"
                 : "screc — screen-recording permission needed"
+            button.setAccessibilityLabel(permissions.granted
+                ? "screc, ready to record"
+                : "screc, screen-recording permission needed")
         }
     }
 

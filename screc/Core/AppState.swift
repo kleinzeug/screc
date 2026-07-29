@@ -189,7 +189,8 @@ final class AppState: ObservableObject {
                                                        maxWidth: config.maxWidth ?? 640,
                                                        fps: config.maxFPS,
                                                        loopForever: config.gifLoopForever,
-                                                       dither: config.gifDitherIntensity)
+                                                       dither: config.gifDitherIntensity,
+                                                       onProgress: progressSink())
                         try? FileManager.default.removeItem(at: result.url)
                         store.add(gifURL)
                         Notifier.recordingFinished(url: gifURL)
@@ -242,7 +243,8 @@ final class AppState: ObservableObject {
                                                maxWidth: params.width,
                                                fps: params.fps,
                                                loopForever: params.loop,
-                                               dither: params.dither)
+                                               dither: params.dither,
+                                               onProgress: progressSink())
                 store.add(gifURL)
             } catch {
                 presentError(error, title: "GIF conversion failed")
@@ -593,6 +595,24 @@ final class AppState: ObservableObject {
         return NSRect(x: screen.frame.minX + rect.minX,
                       y: screen.frame.minY + screen.frame.height - rect.maxY,
                       width: rect.width, height: rect.height)
+    }
+
+    /// Percentage shown in the status item while converting ("converting…
+    /// 42%"). Capped at 99 — the frame estimate is an upper bound, so the
+    /// fraction can finish below 1; finalization flips the phase anyway.
+    private var lastConvertPercent = -1
+
+    private func progressSink() -> @Sendable (Double) -> Void {
+        lastConvertPercent = -1
+        return { [weak self] fraction in
+            Task { @MainActor in
+                guard let self, self.phase == .finishing else { return }
+                let percent = min(Int(fraction * 100), 99)
+                guard percent != self.lastConvertPercent else { return }
+                self.lastConvertPercent = percent
+                self.finishingLabel = "converting… \(percent)%"
+            }
+        }
     }
 
     /// GIF conversion holds every frame in memory until finalize — unbounded

@@ -172,10 +172,14 @@ final class RecordingStore {
 
     private func remove(_ urls: [URL], toTrash: Bool) {
         for url in urls {
-            if toTrash {
-                try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            } else {
-                try? FileManager.default.removeItem(at: url)
+            do {
+                if toTrash {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                } else {
+                    try FileManager.default.removeItem(at: url)
+                }
+            } catch {
+                Log.store.error("could not remove \(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
     }

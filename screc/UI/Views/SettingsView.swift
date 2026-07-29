@@ -1,6 +1,7 @@
 import KeyboardShortcuts
 import ServiceManagement
 import SwiftUI
+@preconcurrency import UserNotifications
 
 struct SettingsView: View {
     @ObservedObject var permissions: PermissionManager
@@ -12,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(DefaultsKey.customStoragePath) private var customStoragePath = ""
     @AppStorage(DefaultsKey.fileNamePattern) private var fileNamePattern = "screc-{date}-{time}"
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var notificationsDenied = false
 
     /// The live configuration (persisted on every change).
     @State private var config = PresetLibrary.currentConfig
@@ -51,6 +53,13 @@ struct SettingsView: View {
     private var existingCustomPreset: RecordingPresetDef? {
         let trimmed = presetName.trimmingCharacters(in: .whitespaces)
         return customPresets.first { $0.name == trimmed }
+    }
+
+    /// Saving a custom preset under a built-in's name would put two identical
+    /// labels in the picker.
+    private var nameShadowsBuiltin: Bool {
+        let trimmed = presetName.trimmingCharacters(in: .whitespaces).lowercased()
+        return PresetLibrary.builtins.contains { $0.name.lowercased() == trimmed }
     }
 
     private var presetSelection: Binding<String> {
@@ -138,6 +147,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+                Text("macOS re-confirms screen-recording consent periodically — the occasional system prompt about screc comes from the OS, not from screc.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Recording") {
@@ -240,7 +252,7 @@ struct SettingsView: View {
                         LabeledContent("Video bitrate") {
                             HStack(spacing: 6) {
                                 if bitrateCustomMode {
-                                    IntField(value: $config.videoBitrateKbps, width: 72)
+                                    IntField(value: videoBitrateBinding, width: 72)
                                     Text("kbit/s")
                                         .foregroundStyle(.secondary)
                                 }
@@ -294,8 +306,8 @@ struct SettingsView: View {
                                     HStack(spacing: 6) {
                                         Text("k =")
                                             .foregroundStyle(.secondary)
-                                        IntField(value: $config.keyframeSeconds, width: 40)
-                                        Stepper("", value: $config.keyframeSeconds, in: 1...10)
+                                        IntField(value: keyframeBinding, width: 40)
+                                        Stepper("", value: keyframeBinding, in: 1...10)
                                             .labelsHidden()
                                     }
                                 }
@@ -341,7 +353,11 @@ struct SettingsView: View {
                                 Text("Save as new Preset").frame(maxWidth: .infinity)
                             }
                             .frame(width: 150)
-                            .disabled(presetName.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .disabled(presetName.trimmingCharacters(in: .whitespaces).isEmpty
+                                      || nameShadowsBuiltin)
+                            .help(nameShadowsBuiltin
+                                  ? "A built-in preset already has this name"
+                                  : "")
                         }
                     }
                 }
@@ -376,7 +392,20 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Launch at login", isOn: launchAtLoginBinding)
                 Toggle("Notify when a recording is saved", isOn: $notifyOnFinish)
+                if notifyOnFinish && notificationsDenied {
+                    HStack(spacing: 8) {
+                        Text("Notifications for screc are turned off in System Settings, so no banner will appear.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Button("Open System Settings…") {
+                            NSWorkspace.shared.open(URL(string:
+                                "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                        }
+                        .controlSize(.small)
+                    }
+                }
             }
+            .task { await refreshNotificationStatus() }
 
             Section("Hotkeys") {
                 ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
@@ -468,6 +497,11 @@ struct SettingsView: View {
             })
     }
 
+    private func refreshNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationsDenied = settings.authorizationStatus == .denied
+    }
+
     private func chooseCustomFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -514,13 +548,34 @@ struct SettingsView: View {
 
     // MARK: - Bindings
 
+    // Typed values are clamped on commit: a 0 bitrate would fail the encoder
+    // at the worst moment (recording start), and the keyframe field must not
+    // bypass the stepper's 1…10 range.
+    private var videoBitrateBinding: Binding<Int> {
+        Binding(
+            get: { config.videoBitrateKbps },
+            set: { config.videoBitrateKbps = min(max($0, 100), 100_000) })
+    }
+
+    private var keyframeBinding: Binding<Int> {
+        Binding(
+            get: { config.keyframeSeconds },
+            set: { config.keyframeSeconds = min(max($0, 1), 10) })
+    }
+
+    /// Zero or negative caps mean "no cap" — normalize them to nil (native).
+    private static func sanitizedCap(_ value: Int?) -> Int? {
+        value.flatMap { $0 > 0 ? min($0, 16384) : nil }
+    }
+
     // Linked resolution: writing either field mirrors into the other.
     private var maxWidthBinding: Binding<Int?> {
         Binding(
             get: { config.maxWidth },
             set: { value in
-                config.maxWidth = value
-                if config.resolutionLinked { config.maxHeight = value }
+                let cap = Self.sanitizedCap(value)
+                config.maxWidth = cap
+                if config.resolutionLinked { config.maxHeight = cap }
             })
     }
 
@@ -528,8 +583,9 @@ struct SettingsView: View {
         Binding(
             get: { config.maxHeight },
             set: { value in
-                config.maxHeight = value
-                if config.resolutionLinked { config.maxWidth = value }
+                let cap = Self.sanitizedCap(value)
+                config.maxHeight = cap
+                if config.resolutionLinked { config.maxWidth = cap }
             })
     }
 

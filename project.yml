@@ -11,7 +11,9 @@ settings:
 packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
-    from: 2.0.0
+    # Pinned exactly: Package.resolved lives inside the gitignored xcodeproj,
+    # so this is the only reproducibility anchor a clean clone has.
+    exactVersion: 2.4.0
 targets:
   screc:
     type: application

@@ -18,7 +18,8 @@ import VideoToolbox
 /// migrated away from it).
 enum GIFConverter {
     static func convert(movie: URL, to output: URL, maxWidth: Int, fps: Int,
-                        loopForever: Bool = true, dither: Double = 0) async throws {
+                        loopForever: Bool = true, dither: Double = 0,
+                        onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
         let asset = AVURLAsset(url: movie)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw ScrecError.gifFailed("no video track")
@@ -82,6 +83,9 @@ enum GIFConverter {
                 ],
             ] as CFDictionary)
             framesAdded += 1
+            // estimatedFrames is an upper bound (sparse sources add fewer),
+            // so the fraction may finish below 1 — callers treat it as such.
+            onProgress?(min(Double(framesAdded) / Double(estimatedFrames), 1))
         }
 
         while let sample = trackOutput.copyNextSampleBuffer() {

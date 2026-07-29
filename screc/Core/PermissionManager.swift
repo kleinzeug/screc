@@ -61,7 +61,11 @@ final class PermissionManager: ObservableObject {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", "sleep 0.5; /usr/bin/open -n \"\(path)\""]
-        try? task.run()
+        do {
+            try task.run()
+        } catch {
+            Log.app.error("relaunch helper failed to start: \(error.localizedDescription)")
+        }
         NSApp.terminate(nil)
     }
 

@@ -5,6 +5,12 @@ import AppKit
 /// when that window disappears (closed, minimized, app quit) it reports
 /// "gone" and keeps searching for a replacement — a window of the same app
 /// (owner name, which survives process restarts) with the same title.
+///
+/// Known limitation (deliberate): if the window's TITLE changes while it is
+/// gone (document renamed, browser tab switched), it is never re-found and
+/// the recording stays paused until stopped manually — the stats readout
+/// shows "paused" throughout. Auto-matching a *different* title would risk
+/// silently recording the wrong content, which is worse than waiting.
 @MainActor
 final class PinnedWindowTracker {
     struct Identity {

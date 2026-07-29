@@ -79,7 +79,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerShortcuts() {
         func bind(_ name: KeyboardShortcuts.Name, _ action: @escaping (AppState) -> Void) {
             KeyboardShortcuts.onKeyUp(for: name) { [weak self] in
-                guard let self, self.permissions.granted else { return }
+                guard let self else { return }
+                guard self.permissions.granted else {
+                    // A silent no-op reads as "the hotkey is broken" — show
+                    // what is actually missing instead.
+                    self.windowManager.showOnboarding()
+                    return
+                }
                 if self.state.phase == .recording {
                     self.state.stopRecording()
                 } else if self.state.phase == .idle {

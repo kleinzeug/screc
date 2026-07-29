@@ -73,6 +73,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     /// strictly increasing presentation times; one violation fails it and
     /// loses the whole take, so anything at or before this is dropped.
     private var lastVideoPTS = CMTime.invalid
+    /// The session's start time (first video frame). Audio that precedes it
+    /// would fall outside the session and produce a warning edit at the file
+    /// head — dropped instead.
+    private var sessionStartPTS = CMTime.zero
     private var framesSinceTick = 0
     private var framesDropped = 0
     private var heartbeat: DispatchSourceTimer?
@@ -268,7 +272,11 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     func switchToWindow(_ window: SCWindow) {
         guard case .window = target, let stream else { return }
         let filter = SCContentFilter(desktopIndependentWindow: window)
-        stream.updateContentFilter(filter) { _ in }
+        stream.updateContentFilter(filter) { error in
+            if let error {
+                Log.engine.error("switchToWindow failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Pinned mode: the window moved/resized on the same display — track the
@@ -276,7 +284,11 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     func updatePinnedGeometry(sourceRect: CGRect) {
         guard case .pinned = target, let stream, let config = streamConfig else { return }
         config.sourceRect = sourceRect
-        stream.updateConfiguration(config) { _ in }
+        stream.updateConfiguration(config) { error in
+            if let error {
+                Log.engine.error("sourceRect update failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Pinned mode: the window returned (possibly as a NEW window of a
@@ -284,9 +296,17 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     func retarget(window: SCWindow, display: SCDisplay, sourceRect: CGRect) {
         guard case .pinned = target, let stream, let config = streamConfig else { return }
         let filter = SCContentFilter(display: display, including: [window])
-        stream.updateContentFilter(filter) { _ in }
+        stream.updateContentFilter(filter) { error in
+            if let error {
+                Log.engine.error("retarget filter failed: \(error.localizedDescription)")
+            }
+        }
         config.sourceRect = sourceRect
-        stream.updateConfiguration(config) { _ in }
+        stream.updateConfiguration(config) { error in
+            if let error {
+                Log.engine.error("retarget config failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Pinned mode: window vanished — halt appends. The stream keeps running;
@@ -504,6 +524,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         }
         if !sessionStarted {
             writer.startSession(atSourceTime: buffer.presentationTimeStamp)
+            sessionStartPTS = buffer.presentationTimeStamp
             sessionStarted = true
         }
         guard videoInput.isReadyForMoreMediaData else {
@@ -535,6 +556,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         if pauseOffset != .zero, let shifted = Self.retimed(sampleBuffer, by: pauseOffset) {
             buffer = shifted
         }
+        guard buffer.presentationTimeStamp >= sessionStartPTS else { return }
         audioInput.append(buffer)
     }
 

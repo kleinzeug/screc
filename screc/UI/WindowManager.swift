@@ -52,28 +52,38 @@ final class WindowManager: NSObject, NSWindowDelegate {
     func showGIFEditor(url: URL) {
         gifEditorWindow?.close()
         gifEditorWindow = nil
-        do {
-            let document = try GIFDocument.load(url: url)
-            let view = GIFFrameEditorView(
-                document: document,
-                onSaved: { [weak self] savedURL in
-                    self?.store.updateBytes(for: savedURL)
-                },
-                onClose: { [weak self] in
-                    self?.gifEditorWindow?.close()
-                })
-            let window = makeWindow(title: "Edit GIF — \(url.lastPathComponent)",
-                                    content: AnyView(view))
-            window.styleMask.insert(.resizable)
-            gifEditorWindow = window
-            present(window)
-        } catch {
-            NSApp.activate()
-            let alert = NSAlert()
-            alert.messageText = "Couldn't open GIF"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
+        // Loading thumbnail-decodes every frame — off the main thread, or a
+        // large GIF beachballs the whole app.
+        Task { [weak self] in
+            do {
+                let document = try await Task.detached(priority: .userInitiated) {
+                    try GIFDocument.load(url: url)
+                }.value
+                self?.presentGIFEditor(document: document, url: url)
+            } catch {
+                NSApp.activate()
+                let alert = NSAlert()
+                alert.messageText = "Couldn't open GIF"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
         }
+    }
+
+    private func presentGIFEditor(document: GIFDocument, url: URL) {
+        let view = GIFFrameEditorView(
+            document: document,
+            onSaved: { [weak self] savedURL in
+                self?.store.updateBytes(for: savedURL)
+            },
+            onClose: { [weak self] in
+                self?.gifEditorWindow?.close()
+            })
+        let window = makeWindow(title: "Edit GIF — \(url.lastPathComponent)",
+                                content: AnyView(view))
+        window.styleMask.insert(.resizable)
+        gifEditorWindow = window
+        present(window)
     }
 
     private func makeWindow(title: String, content: AnyView) -> NSWindow {

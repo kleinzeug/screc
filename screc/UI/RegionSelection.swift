@@ -300,8 +300,20 @@ private final class SelectionView: NSView {
         }
         guard let rect = selection, rect.width >= 10, rect.height >= 10 else {
             // A click rather than a drag: start from the whole screen, which
-            // can then be resized down.
-            let whole = bounds.integral
+            // can then be resized down. With Force Aspect Ratio on, use the
+            // largest centered rect of that ratio instead of the raw bounds.
+            var whole = bounds.integral
+            if let aspect = forcedAspect, aspect > 0 {
+                var width = bounds.width
+                var height = width / aspect
+                if height > bounds.height {
+                    height = bounds.height
+                    width = height * aspect
+                }
+                whole = NSRect(x: bounds.midX - width / 2,
+                               y: bounds.midY - height / 2,
+                               width: width, height: height).integral
+            }
             selection = whole
             onSelectionChanged?(whole)
             return

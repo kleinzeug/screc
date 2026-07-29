@@ -93,7 +93,11 @@ struct GIFFrameEditorView: View {
         let url = document.url
         Task {
             do {
-                try GIFDocument.save(url: url, keptIndices: kept)
+                // Rewriting decodes every kept frame — keep it off the main
+                // thread so the window stays responsive.
+                try await Task.detached(priority: .userInitiated) {
+                    try GIFDocument.save(url: url, keptIndices: kept)
+                }.value
                 onSaved(url)
                 onClose()
             } catch {

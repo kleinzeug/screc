@@ -127,6 +127,8 @@ struct OnboardingView: View {
                   systemImage: "contextualmenu.and.cursorarrow")
             Label("Recordings are compressed on the fly — share-ready when you stop",
                   systemImage: "bolt.fill")
+            Label("Hotkeys: **⌘⇧8** window · **⌘⇧9** screen · **⌘⇧0** stop — all rebindable in Settings",
+                  systemImage: "keyboard")
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,9 +152,14 @@ struct OnboardingView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Start Using screc") { onFinish() }
-                .buttonStyle(.borderedProminent)
-                .disabled(!permissions.granted)
+            Button("Start Using screc") {
+                // The calm moment for the notification prompt — not the
+                // middle of the user's first save.
+                Notifier.requestAuthorizationUpfront()
+                onFinish()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!permissions.granted)
         }
     }
 }
