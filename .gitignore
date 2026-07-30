@@ -17,3 +17,6 @@ Config/local.xcconfig
 
 # Pre-release working document (local checklist, not part of the project).
 release-review.md
+
+# Local App Store dress-rehearsal build products.
+build-mas/

@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreAudio
+import os
 
 /// Live input-level meter for the Settings microphone section. Runs an
 /// AVAudioEngine tap while the section is visible and enabled — completely
@@ -14,6 +15,11 @@ final class MicLevelMonitor: ObservableObject {
     @Published private(set) var running = false
 
     private var engine: AVAudioEngine?
+    private var displayTimer: Timer?
+    /// Written by the realtime audio thread, read on the main actor at
+    /// display rate. A lock (not a Task hop per buffer) keeps allocation and
+    /// actor machinery off the audio thread.
+    private let latestRMS = OSAllocatedUnfairLock(initialState: 0.0)
 
     func start(deviceUID: String) {
         stop()
@@ -36,29 +42,52 @@ final class MicLevelMonitor: ObservableObject {
         }
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { return }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+
+        // MUST be explicitly @Sendable: this class is @MainActor, so an
+        // inferred closure would inherit that isolation, and Swift emits an
+        // executor assertion at its prologue — which traps the instant the
+        // audio render thread delivers the first buffer. Capture only the
+        // lock, never self.
+        let sink = latestRMS
+        let tap: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
             let rms = Self.rms(buffer)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Perceptual-ish scaling; decay keeps the bar readable.
-                let target = min(1, pow(rms * 4, 0.6))
-                self.level = max(target, self.level * 0.82)
-            }
+            sink.withLock { $0 = rms }
         }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: tap)
+
         do {
             try engine.start()
             self.engine = engine
             running = true
+            startDisplayTimer()
         } catch {
             Log.app.error("mic meter failed to start: \(error.localizedDescription)")
             input.removeTap(onBus: 0)
         }
     }
 
+    /// Samples the shared level at display rate — fast attack, slow decay.
+    private func startDisplayTimer() {
+        displayTimer?.invalidate()
+        displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0,
+                                            repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let rms = self.latestRMS.withLock { $0 }
+                // Perceptual-ish scaling; decay keeps the bar readable.
+                let target = min(1, pow(rms * 4, 0.6))
+                self.level = max(target, self.level * 0.82)
+            }
+        }
+    }
+
     func stop() {
+        displayTimer?.invalidate()
+        displayTimer = nil
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
+        latestRMS.withLock { $0 = 0 }
         running = false
         level = 0
     }
