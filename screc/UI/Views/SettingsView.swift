@@ -533,22 +533,27 @@ struct SettingsView: View {
 
             Section("About") {
                 LabeledContent("Version", value: versionString)
+                LabeledContent("Author", value: "Philipp Holzschneider · Kleinzeug")
                 if BuildFlavor.showsSourceLinks {
                     LabeledContent("Source") {
-                        HStack(spacing: 14) {
-                            Link("GitHub", destination: BuildFlavor.repositoryURL)
-                            Link("Buy me a coffee ☕", destination: BuildFlavor.coffeeURL)
-                        }
+                        Link("github.com/kleinzeug/screc",
+                             destination: BuildFlavor.repositoryURL)
+                    }
+                    LabeledContent("Support") {
+                        Link("Buy me a coffee ☕", destination: BuildFlavor.coffeeURL)
                     }
                 }
-                LabeledContent("Author", value: "Philipp Holzschneider")
                 Text("""
-                **License** — The source is MIT: clone it, build it, change \
-                it, ship your fork. Binaries from the Mac App Store are \
-                covered by Apple's standard EULA and sold for a small fee — \
-                buying is never required. If you improve screc, sending the \
-                change back upstream as a pull request is appreciated: \
-                a request, not a condition.
+                **License** — The source is MIT-licensed: clone it, build it, \
+                change it. If you improve screc, sending the change back \
+                upstream as a pull request is appreciated — a request, not a \
+                condition.
+                """)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Text("""
+                Binaries distributed through the Mac App Store are covered by \
+                Apple's standard End User License Agreement.
                 """)
                 .font(.caption)
                 .foregroundStyle(.secondary)
