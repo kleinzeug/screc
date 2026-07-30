@@ -120,11 +120,18 @@ locally — see [docs/RELEASING.md](docs/RELEASING.md).)
 
 ### Versioning
 
-Debug builds stamp `CFBundleShortVersionString` from `git describe --tags
---dirty`, so every build identifies its exact commit — a clean tag builds as
-`1.0.0`, three commits later as `1.0.0-3-gabc1234`, uncommitted changes as
-`…-dirty`. Release and App Store builds sanitize that to plain `x.y.z` (App
-Store Connect rejects the suffixes) and stamp a UTC-timestamp build number.
+The version comes from the `MARKETING_VERSION` build setting (`1.0.0`), and the
+build number from `CURRENT_PROJECT_VERSION`. Release tooling overrides both on
+the command line — the version derived from `git describe`, the build number a
+UTC timestamp so it always increases:
+
+```sh
+xcodebuild … MARKETING_VERSION=1.0.0 CURRENT_PROJECT_VERSION=$(date -u +%Y%m%d%H%M)
+```
+
+They are deliberately *not* patched into `Info.plist` by a build phase: Xcode's
+plist-processing step can run after script phases, which silently discards the
+edit — harmless locally, a rejected upload for a store build.
 
 ## Contributing
 

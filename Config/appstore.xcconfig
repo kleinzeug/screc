@@ -1,14 +1,14 @@
 // Mac App Store configuration. Committed, and deliberately free of any
 // account information: the team id comes from the optional (gitignored)
 // local.xcconfig, exactly like the ad-hoc/dev setup in signing.xcconfig.
-// Archive with: xcodebuild archive -configuration AppStore …
+//
+// CODE_SIGN_IDENTITY is deliberately NOT set here. With automatic signing,
+// forcing "Apple Distribution" makes xcodebuild refuse the archive
+// ("conflicting provisioning settings"): the archive is signed for
+// development and the *export* step re-signs it for distribution, driven by
+// Config/ExportOptionsAppStore.plist. See docs/RELEASING.md.
 CODE_SIGN_ENTITLEMENTS = Config/screc-mas.entitlements
 CODE_SIGN_STYLE = Automatic
-CODE_SIGN_IDENTITY = Apple Distribution
 DEVELOPMENT_TEAM =
 
 #include? "local.xcconfig"
-
-// local.xcconfig sets Apple Development for day-to-day builds; a store
-// archive must sign with Apple Distribution regardless.
-CODE_SIGN_IDENTITY = Apple Distribution

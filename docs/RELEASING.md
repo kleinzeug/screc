@@ -23,24 +23,30 @@ One-time: an **Apple Distribution** certificate (Xcode → Settings →
 Accounts → Manage Certificates), and the app record on App Store Connect
 (bundle id `app.screc`).
 
+The full command sequence, the listing copy, the review notes and the
+submission checklist live in **[docs/APPSTORE.md](APPSTORE.md)**. In short:
+
 ```sh
-git tag v1.0.0                      # the version is stamped from `git describe`
 xcodegen generate
-xcodebuild archive \
-  -project screc.xcodeproj -scheme screc -configuration AppStore \
-  -archivePath dist/screc-appstore.xcarchive
-xcodebuild -exportArchive \
-  -archivePath dist/screc-appstore.xcarchive \
+STAMP=$(date -u +%Y%m%d%H%M)
+xcodebuild archive -project screc.xcodeproj -scheme screc -configuration AppStore \
+  -archivePath dist/screc-appstore.xcarchive -destination 'generic/platform=macOS' \
+  MARKETING_VERSION=1.0.0 CURRENT_PROJECT_VERSION="$STAMP" -allowProvisioningUpdates
+xcodebuild -exportArchive -archivePath dist/screc-appstore.xcarchive \
   -exportOptionsPlist Config/ExportOptionsAppStore.plist \
-  -exportPath dist/appstore
+  -exportPath dist/appstore -allowProvisioningUpdates
 ```
 
-`ExportOptionsAppStore.plist` uploads straight to App Store Connect
-(`app-store-connect` / `upload`); Apple's own validation and notarization
-run as part of processing. Alternatively archive in Xcode and use the
-Organizer. Then: TestFlight pass → submit for review. A GitHub *release*
-(tag + notes, **no binary attached**) records which commit each store
-version corresponds to.
+Export **signs but never uploads** (`destination` is `export` on purpose).
+Uploading is a separate act: Xcode Organizer → *Distribute App*, or
+`xcrun altool --upload-app`. Then TestFlight, then submit for review. A GitHub
+*release* (tag + notes, **no binary attached**) records which commit each
+store version corresponds to.
+
+Versions are passed as build settings, never patched into `Info.plist` after
+the fact — Xcode's plist-processing step can run after script phases and
+would discard the edit, which for a store build means a wrong
+`CFBundleVersion` and a rejected upload.
 
 ## Developer ID builds (internal / test builds only)
 

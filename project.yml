@@ -35,32 +35,16 @@ targets:
     scheme:
       testTargets:
         - screcTests
-    postBuildScripts:
-      - name: Stamp version and build number
-        basedOnDependencyAnalysis: false
-        script: |
-          version=$(git -C "$SRCROOT" describe --tags --always --dirty 2>/dev/null || echo "$MARKETING_VERSION")
-          version=${version#v}
-          # Debug keeps the full git-describe string (identifies the exact
-          # commit); Release/AppStore sanitize to x.y.z — App Store Connect
-          # rejects suffixes like -3-gabc1234 or -dirty.
-          if [ "$CONFIGURATION" != "Debug" ]; then
-            version=$(printf '%s' "$version" | sed -E 's/^([0-9]+(\.[0-9]+){1,2}).*$/\1/')
-            case "$version" in
-              *.*) ;;
-              *) version="$MARKETING_VERSION" ;;
-            esac
-          fi
-          # Build numbers must strictly increase per upload: UTC timestamp —
-          # monotonic, zero bookkeeping, immune to history rewrites.
-          build=$(date -u +%Y%m%d%H%M)
-          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-          if [ -f "$plist" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build" "$plist"
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$plist" 2>/dev/null \
-              || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$plist"
-          fi
+    # NOTE: versions are NOT patched into Info.plist by a build phase. Xcode's
+    # ProcessInfoPlistFile step can run AFTER script phases (it does for the
+    # AppStore configuration and does not for Debug), so a post-build edit is
+    # silently discarded roughly half the time — including on store uploads,
+    # where a wrong CFBundleVersion means a rejected build. The version comes
+    # from build settings instead, which that step consumes as its input:
+    #   MARKETING_VERSION      → CFBundleShortVersionString
+    #   CURRENT_PROJECT_VERSION → CFBundleVersion
+    # tools/release.sh and the archive command in docs/RELEASING.md pass both
+    # explicitly (git-derived version, UTC-timestamp build number).
     settings:
       base:
         # Anchored to the owned domain screc.app; fixed forever (TCC grants
@@ -75,6 +59,8 @@ targets:
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Philipp Holzschneider"
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "screc records the microphone only while you are recording, and only when microphone capture is enabled in Settings."
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.video
+        # Skips the export-compliance question on every upload.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # CODE_SIGN_ENTITLEMENTS deliberately NOT set here: it lives in the

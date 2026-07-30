@@ -52,8 +52,18 @@ fi
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0")
 VERSION=${VERSION#v}
 [[ "$VERSION" == *-dirty ]] && printf '\033[1;33mwarning:\033[0m working tree is dirty — version will read %s\n' "$VERSION"
+
+# Versions are passed as build settings, never patched into Info.plist after
+# the fact: Xcode's plist-processing step can run after script phases and would
+# discard the edit (see the note in project.yml).
+SHORT_VERSION=$(printf '%s' "$VERSION" | sed -E 's/^([0-9]+(\.[0-9]+){1,2}).*$/\1/')
+if ! [[ "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+  SHORT_VERSION=$(grep -E '^\s*MARKETING_VERSION:' project.yml | awk '{print $2}')
+fi
+# Monotonic and bookkeeping-free; strictly increasing per build.
+BUILD_NUMBER=$(date -u +%Y%m%d%H%M)
 echo "team:    $TEAM_ID"
-echo "version: $VERSION"
+echo "version: $SHORT_VERSION ($BUILD_NUMBER) — from git describe: $VERSION"
 
 # ---------------------------------------------------------------- build
 step "Generating project"
@@ -71,6 +81,8 @@ xcodebuild archive \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="Developer ID Application" \
   DEVELOPMENT_TEAM="$TEAM_ID" \
+  MARKETING_VERSION="$SHORT_VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
   | grep -E "^(===|\*\*|error:|warning: .*deprecat)" || true
 
@@ -90,7 +102,7 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 codesign -dv --verbose=4 "$APP" 2>&1 | grep -E "Authority|TeamIdentifier|Timestamp|Runtime" || true
 
 # ---------------------------------------------------------- notarization
-ZIP="$DIST/$APP_NAME-$VERSION.zip"
+ZIP="$DIST/$APP_NAME-$SHORT_VERSION.zip"
 step "Packaging for notarization"
 ditto -c -k --keepParent "$APP" "$ZIP"
 

@@ -72,15 +72,14 @@ jobs:
 
           [ "$id" = "app.screc" ] || { echo "::error::unexpected bundle id $id"; exit 1; }
           [ "$agent" = "true" ] || { echo "::error::LSUIElement not set — would show a Dock icon"; exit 1; }
+          # Comes from MARKETING_VERSION; release builds override it.
           case "$version" in
-            0.0.0|"") echo "::error::version not stamped from git describe"; exit 1 ;;
+            0.0.0|"") echo "::error::no marketing version in the bundle"; exit 1 ;;
           esac
 
           test -f "$APP/Contents/Resources/AppIcon.icns" \
             || { echo "::error::app icon missing from bundle"; exit 1; }
 
-          # The version stamp rewrites Info.plist — make sure that did not
-          # invalidate the signature (this is what would break notarization).
           codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Package
