@@ -124,6 +124,35 @@ struct SettingsView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
 
+    /// When this binary was produced. Release and store builds stamp
+    /// CFBundleVersion with a UTC `yyyyMMddHHmm` timestamp, which is exact;
+    /// plain builds carry the default build number, so fall back to the
+    /// executable's modification date.
+    private var buildDateString: String {
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.timeZone = TimeZone(identifier: "UTC")
+        stamp.dateFormat = "yyyyMMddHHmm"
+
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+        let date: Date?
+        // Shape-check first: DateFormatter happily turns "" into 1 Jan 2000.
+        if build.count == 12, build.allSatisfy(\.isNumber),
+           let stamped = stamp.date(from: build) {
+            date = stamped
+        } else {
+            date = Bundle.main.executableURL
+                .flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]) }?
+                .contentModificationDate
+        }
+        guard let date else { return "—" }
+        // Reader-facing, so this one follows the user's locale.
+        let display = DateFormatter()
+        display.dateStyle = .medium
+        display.timeStyle = .none
+        return display.string(from: date)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -532,7 +561,7 @@ struct SettingsView: View {
             .task { await refreshNotificationStatus() }
 
             Section("About") {
-                LabeledContent("Version", value: versionString)
+                LabeledContent("Version", value: "\(versionString) · \(buildDateString)")
                 LabeledContent("Author", value: "Philipp Holzschneider · Kleinzeug")
                 if BuildFlavor.showsSourceLinks {
                     LabeledContent("Source") {
