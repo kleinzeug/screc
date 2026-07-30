@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Recordings live in /tmp/screc by default: macOS wipes /private/tmp at boot
 /// and a daily tmp_cleaner daemon removes stale files, so disk space frees
@@ -18,11 +19,20 @@ final class RecordingStore {
         var name: String { url.lastPathComponent }
     }
 
-    /// True in the sandboxed (App Store) build. Runtime detection rather
-    /// than a build flag: the sandbox is what actually decides which paths
-    /// are reachable.
-    static let isSandboxed =
-        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    /// True in the sandboxed (App Store) build, read from this binary's own
+    /// signed entitlements.
+    ///
+    /// NOT from the environment: `APP_SANDBOX_CONTAINER_ID` is absent and
+    /// `HOME` is un-redirected even in a genuinely sandboxed build (verified
+    /// 2026-07-29), and guessing wrong here would point recordings at /tmp,
+    /// which the sandbox refuses — every recording would fail.
+    static let isSandboxed: Bool = {
+        guard let task = SecTaskCreateFromSelf(nil),
+              let value = SecTaskCopyValueForEntitlement(
+                  task, "com.apple.security.app-sandbox" as CFString, nil)
+        else { return false }
+        return (value as? NSNumber)?.boolValue ?? false
+    }()
 
     /// Resolved from settings: the self-cleaning temp location, ~/Movies/screc
     /// (self-built only — the sandbox offers no blanket Movies access), or a
@@ -110,6 +120,11 @@ final class RecordingStore {
     var activeRecordingURL: URL?
 
     init() {
+        Log.store.notice("""
+            storage: sandboxed=\(Self.isSandboxed, privacy: .public) \
+            choice=\(Prefs.storageChoice, privacy: .public) \
+            dir=\(Self.directory.path, privacy: .public)
+            """)
         purgePreBootRecordings()
         load()
         validate()

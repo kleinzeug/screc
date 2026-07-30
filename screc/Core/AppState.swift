@@ -103,6 +103,7 @@ final class AppState: ObservableObject {
     weak var windowTracker: FocusedWindowTracker?
     weak var pinnedTracker: PinnedWindowTracker?
     weak var countdown: CountdownController?
+    weak var inputOverlay: InputOverlayController?
 
     init(store: RecordingStore) {
         self.store = store
@@ -128,7 +129,7 @@ final class AppState: ObservableObject {
         // focused when recording begins, not when it was requested.
         if Prefs.countdownEnabled, let countdown {
             phase = .countdown
-            countdown.begin(on: Self.countdownScreen(for: request)) { [weak self] finished in
+            countdown.begin(on: Self.targetScreen(for: request)) { [weak self] finished in
                 guard let self else { return }
                 self.phase = .idle
                 if finished { self.startRecording(request) }
@@ -143,8 +144,9 @@ final class AppState: ObservableObject {
         countdown?.cancel() // fires the completion with finished = false
     }
 
-    /// Screen the countdown overlay appears on — where the capture will be.
-    private static func countdownScreen(for request: CaptureRequest) -> NSScreen {
+    /// The screen a request will record on — where the countdown and the
+    /// keyboard/combination HUD belong.
+    private static func targetScreen(for request: CaptureRequest) -> NSScreen {
         let fallback = NSScreen.main ?? NSScreen.screens[0]
         switch request {
         case .display(let id), .region(let id, _):
@@ -200,6 +202,7 @@ final class AppState: ObservableObject {
             } catch {
                 currentPinned = nil
                 store.activeRecordingURL = nil
+                inputOverlay?.stop()
                 presentError(error)
             }
         }
@@ -224,6 +227,7 @@ final class AppState: ObservableObject {
         windowTracker?.stop()
         pinnedTracker?.stop()
         passepartout?.hide()
+        inputOverlay?.stop()
         currentPinned = nil
         pinnedGeometryTimer?.invalidate()
         pinnedGeometryTimer = nil
@@ -434,9 +438,17 @@ final class AppState: ObservableObject {
     private func begin(target: CaptureTarget, request: CaptureRequest) async throws {
         let config = PresetLibrary.currentConfig
         activeConfig = config
+        // The input overlay has to exist BEFORE the capture filter is built:
+        // the filter includes it by window id, and unlike every other screc
+        // window it must appear in the recording.
+        var overlayWindowIDs: [CGWindowID] = []
+        if Prefs.needsInputOverlay, let inputOverlay {
+            overlayWindowIDs = inputOverlay.start(hudScreen: Self.targetScreen(for: request))
+        }
         let url = store.newOutputURL(fileExtension: "mp4")
         store.activeRecordingURL = url
-        let engine = ScreenRecorderEngine(target: target, config: config, outputURL: url)
+        let engine = ScreenRecorderEngine(target: target, config: config, outputURL: url,
+                                          includedWindowIDs: overlayWindowIDs)
         engine.onStatsUpdate = { [weak self] stats in
             self?.stats = stats
         }

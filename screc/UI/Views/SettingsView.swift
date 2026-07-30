@@ -14,9 +14,16 @@ struct SettingsView: View {
     @AppStorage(DefaultsKey.micEnabled) private var micEnabled = false
     @AppStorage(DefaultsKey.micDeviceID) private var micDeviceID = ""
     @AppStorage(DefaultsKey.micGain) private var micGain = 1.0
+    @AppStorage(DefaultsKey.doubleCursorSize) private var doubleCursorSize = false
+    @AppStorage(DefaultsKey.showsMouseClicks) private var showsMouseClicks = false
+    @AppStorage(DefaultsKey.showsMouseScroll) private var showsMouseScroll = false
+    @AppStorage(DefaultsKey.showsKeyStrokes) private var showsKeyStrokes = false
+    @AppStorage(DefaultsKey.showsKeyCombinations) private var showsKeyCombinations = false
+    @State private var keyMonitoringGranted = InputMonitor.keyAccessGranted
     @StateObject private var micMonitor = MicLevelMonitor()
     @State private var micDevices: [MicDevices.Device] = []
     @State private var micDenied = false
+    @State private var advancedExpanded = false
     @AppStorage(DefaultsKey.storageChoice) private var storageChoice = "tmp"
     @AppStorage(DefaultsKey.customStoragePath) private var customStoragePath = ""
     @AppStorage(DefaultsKey.fileNamePattern) private var fileNamePattern = "screc-{date}-{time}"
@@ -89,6 +96,21 @@ struct SettingsView: View {
             })
     }
 
+    /// The mic level slider and the input meter share this width so the two
+    /// rows line up under each other.
+    private static let micControlWidth: CGFloat = 160
+
+    private var needsKeyMonitoring: Bool { showsKeyStrokes || showsKeyCombinations }
+
+    private var anyInputVisualization: Bool {
+        (showsCursor && doubleCursorSize) || showsMouseClicks || showsMouseScroll
+            || needsKeyMonitoring
+    }
+
+    private func refreshKeyMonitoringStatus() {
+        keyMonitoringGranted = InputMonitor.keyAccessGranted
+    }
+
     private var videoFPSOptions: [Int] { [15, 24, 30, 60] }
     private var gifFPSOptions: [Int] { [5, 10, 12, 15] }
     private static let bitratePresets = [500, 800, 1200, 2000, 3000, 5000, 8000, 12000]
@@ -144,8 +166,10 @@ struct SettingsView: View {
 
     private var settingsForm: some View {
         Form {
-            Section("Permissions") {
-                LabeledContent("Screen Recording") {
+            // Everything about capturing the screen: the access it needs,
+            // how it captures, and what comes out.
+            Section("Screen Recording") {
+                LabeledContent("Permission") {
                     if permissions.granted {
                         Label("Granted", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -158,59 +182,6 @@ struct SettingsView: View {
                 Text("macOS re-confirms screen-recording consent periodically — the occasional system prompt about screc comes from the OS, not from screc.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            Section("Recording") {
-                Toggle("Show mouse cursor", isOn: $showsCursor)
-                Toggle("Capture system audio", isOn: $captureSystemAudio)
-                Toggle("Discard recordings shorter than 3 seconds",
-                       isOn: $discardShortRecordings)
-                Toggle("Countdown before recording (3 s)", isOn: $countdownEnabled)
-            }
-
-            Section("Microphone") {
-                Toggle("Record microphone", isOn: micEnabledBinding)
-                if micEnabled {
-                    if micDenied {
-                        HStack(spacing: 8) {
-                            Text("Microphone access for screc is turned off in System Settings.")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                            Button("Open System Settings…") {
-                                NSWorkspace.shared.open(URL(string:
-                                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-                            }
-                            .controlSize(.small)
-                        }
-                    } else {
-                        Picker("Input device", selection: $micDeviceID) {
-                            Text("System Default").tag("")
-                            if !micDevices.isEmpty { Divider() }
-                            ForEach(micDevices) { device in
-                                Text(device.name).tag(device.id)
-                            }
-                        }
-                        LabeledContent("Microphone level") {
-                            HStack(spacing: 8) {
-                                Slider(value: $micGain, in: 0...1)
-                                    .frame(width: 140)
-                                Text("\(Int(micGain * 100)) %")
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 44, alignment: .trailing)
-                            }
-                        }
-                        LabeledContent("Input meter") {
-                            MicMeterBar(level: micMonitor.level)
-                        }
-                    }
-                    Text("Mixed with the system audio when the recording stops. GIF recordings have no audio.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Output Preset") {
                 HStack(spacing: 8) {
                     Text("Preset")
                     Spacer()
@@ -227,7 +198,7 @@ struct SettingsView: View {
             }
 
             if formatSettingsVisible {
-                Section("Format Settings") {
+                Section("Format") {
                     Picker("Video format", selection: $config.format) {
                         ForEach(RecordingConfig.Format.allCases, id: \.self) { format in
                             Text(format.label).tag(format)
@@ -325,7 +296,8 @@ struct SettingsView: View {
                             Text("192 kbit/s").tag(192)
                         }
 
-                        DisclosureGroup("Advanced") {
+                        advancedHeader
+                        if advancedExpanded {
                             VStack(spacing: 0) {
                                 if config.format == .mp4 {
                                     LabeledContent("H.264 profile") {
@@ -414,6 +386,96 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Sound") {
+                Toggle("Record System Audio", isOn: $captureSystemAudio)
+                // Plain binding: .onChange(of: micEnabled) does the asking.
+                Toggle("Record Microphone", isOn: $micEnabled)
+                if micEnabled {
+                    if micDenied {
+                        HStack(spacing: 8) {
+                            Text("Microphone access for screc is turned off in System Settings.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Button("Open System Settings…") {
+                                NSWorkspace.shared.open(URL(string:
+                                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                            }
+                            .controlSize(.small)
+                        }
+                    } else {
+                        Picker("Input device", selection: $micDeviceID) {
+                            Text("System Default").tag("")
+                            if !micDevices.isEmpty { Divider() }
+                            ForEach(micDevices) { device in
+                                Text(device.name).tag(device.id)
+                            }
+                        }
+                        LabeledContent("Input meter") {
+                            MicMeterBar(level: micMonitor.level,
+                                        width: Self.micControlWidth)
+                        }
+                        LabeledContent("Microphone level") {
+                            // Percentage left of the slider; the slider and
+                            // the meter share a width, so both rows line up
+                            // on the trailing edge LabeledContent gives them.
+                            HStack(spacing: 8) {
+                                Text("\(Int(micGain * 100)) %")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 44, alignment: .trailing)
+                                Slider(value: $micGain, in: 0...1)
+                                    .frame(width: Self.micControlWidth)
+                            }
+                        }
+                    }
+                    Text("Mixed with the system audio when the recording stops. GIF recordings have no audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Input") {
+                Toggle("Show mouse cursor", isOn: $showsCursor)
+                Toggle("Double mouse cursor size", isOn: $doubleCursorSize)
+                    .disabled(!showsCursor)
+                Toggle("Show mouse clicks", isOn: $showsMouseClicks)
+                Toggle("Show mouse scroll", isOn: $showsMouseScroll)
+                Toggle("Show key strokes", isOn: $showsKeyStrokes)
+                Toggle("Show key combinations", isOn: $showsKeyCombinations)
+                if needsKeyMonitoring && !keyMonitoringGranted {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Showing keys needs the Input Monitoring permission.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        HStack(spacing: 8) {
+                            Button("Allow Input Monitoring…") {
+                                InputMonitor.requestKeyAccess()
+                                refreshKeyMonitoringStatus()
+                            }
+                            .controlSize(.small)
+                            Button("Open System Settings…") {
+                                InputMonitor.openInputMonitoringSettings()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                if anyInputVisualization {
+                    Text("Drawn into full-screen and region recordings. A recording scoped to a single window composites only that window, so overlays cannot appear in Focused Window mode.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Hotkeys") {
+                ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
+                    ShortcutRow(name: entry.name, label: entry.label)
+                }
+                Text("Each mode hotkey starts that mode with what it last recorded; any of them also stops a running recording. Hover a shortcut to clear it back to the default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Storage") {
                 Picker("Location", selection: $storageChoice) {
                     if RecordingStore.isSandboxed {
@@ -447,7 +509,12 @@ struct SettingsView: View {
             }
 
             Section("General") {
+                Toggle("Discard recordings shorter than 3 seconds",
+                       isOn: $discardShortRecordings)
+                Toggle("Countdown before recording (3 s)", isOn: $countdownEnabled)
                 Toggle("Launch at login", isOn: launchAtLoginBinding)
+                // Kept last: its "notifications are off" warning appears
+                // directly beneath it.
                 Toggle("Notify when a recording is saved", isOn: $notifyOnFinish)
                 if notifyOnFinish && notificationsDenied {
                     HStack(spacing: 8) {
@@ -463,15 +530,6 @@ struct SettingsView: View {
                 }
             }
             .task { await refreshNotificationStatus() }
-
-            Section("Hotkeys") {
-                ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
-                    ShortcutRow(name: entry.name, label: entry.label)
-                }
-                Text("Each mode hotkey starts that mode with what it last recorded; any of them also stops a running recording. Hover a shortcut to clear it back to the default.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
 
             Section("About") {
                 LabeledContent("Version", value: versionString)
@@ -503,11 +561,20 @@ struct SettingsView: View {
             if RecordingStore.isSandboxed && storageChoice == "movies" {
                 storageChoice = "tmp"
             }
-            refreshMicSection()
+            // Already-enabled section with an undecided permission (e.g.
+            // enabled before the entitlement existed): ask now.
+            requestMicAccessIfNeeded()
         }
         .onDisappear { micMonitor.stop() }
-        .onChange(of: micEnabled) { refreshMicSection() }
-        .onChange(of: micDeviceID) { refreshMicSection() }
+        .onChange(of: micEnabled) { requestMicAccessIfNeeded() }
+        .onChange(of: micDeviceID) { refreshMicStatus() }
+        // Coming back from System Settings must update the state in place.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshMicStatus()
+            refreshKeyMonitoringStatus()
+            Task { await refreshNotificationStatus() }
+        }
         .onChange(of: config) {
             PresetLibrary.setCurrent(config)
         }
@@ -518,6 +585,29 @@ struct SettingsView: View {
                 config.maxFPS = config.format == .gif ? 12 : 30
             }
         }
+    }
+
+    /// Hand-rolled disclosure row. DisclosureGroup does not reliably
+    /// re-render inside `.formStyle(.grouped)` on macOS — its content stayed
+    /// hidden until some unrelated change invalidated the view — so the
+    /// chevron, the hit target and the conditional content are all explicit.
+    /// The whole row is the target, not just the chevron.
+    private var advancedHeader: some View {
+        Button {
+            advancedExpanded.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.15), value: advancedExpanded)
+                Text("Advanced")
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var presetPicker: some View {
@@ -572,20 +662,10 @@ struct SettingsView: View {
 
     // MARK: - Microphone
 
-    /// Enabling asks for the permission right then (the spec: the section
-    /// "only asks for permissions when it's enabled").
-    private var micEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { micEnabled },
-            set: { enabled in
-                micEnabled = enabled
-                if !enabled { micMonitor.stop() }
-                // onChange(of: micEnabled) drives the rest, including the
-                // permission request for .notDetermined.
-            })
-    }
-
-    private func refreshMicSection() {
+    /// Re-reads the authorization state; never prompts. Safe to call on
+    /// every window activation, which is how a grant made in System Settings
+    /// reaches the UI without a relaunch.
+    private func refreshMicStatus() {
         guard micEnabled else {
             micMonitor.stop()
             return
@@ -596,15 +676,32 @@ struct SettingsView: View {
             micDevices = MicDevices.all()
             micMonitor.start(deviceUID: micDeviceID)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                Task { @MainActor in
-                    micDenied = !granted
-                    if granted { refreshMicSection() }
-                }
-            }
+            micDenied = false // nothing refused yet — enabling does the asking
+            micMonitor.stop()
         default:
             micDenied = true
             micMonitor.stop()
+        }
+    }
+
+    /// The section asks for permission only when it is enabled (per spec),
+    /// and only while the decision is still open.
+    private func requestMicAccessIfNeeded() {
+        guard micEnabled else {
+            micMonitor.stop()
+            return
+        }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else {
+            refreshMicStatus()
+            return
+        }
+        // The async form on purpose: a completion closure written inside this
+        // @MainActor view would inherit main-actor isolation, and the system
+        // may deliver it on any queue — the same executor-assertion trap that
+        // the audio tap in MicLevelMonitor hit.
+        Task {
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
+            refreshMicStatus()
         }
     }
 
@@ -882,6 +979,7 @@ private struct NameField: View {
 /// Live input-level bar for the microphone section.
 private struct MicMeterBar: View {
     var level: Double
+    var width: CGFloat
 
     var body: some View {
         GeometryReader { geo in
@@ -893,7 +991,7 @@ private struct MicMeterBar: View {
                     .animation(.linear(duration: 0.08), value: level)
             }
         }
-        .frame(width: 160, height: 8)
+        .frame(width: width, height: 8)
     }
 }
 

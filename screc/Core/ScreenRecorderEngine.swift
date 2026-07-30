@@ -50,6 +50,11 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     /// stop. True only with the feature enabled AND the permission granted.
     let capturesMic: Bool
     private let micDeviceID: String
+    /// Windows that must appear in the recording despite screc's own app
+    /// being excluded — the input-visualization overlays. Display and region
+    /// filters honor this; a window-scoped filter composites only its window,
+    /// so overlays cannot appear there at all.
+    private let includedWindowIDs: [CGWindowID]
 
     private var fps: Int { config.maxFPS }
     /// Whether a system-audio track is being written (mix-down needs to know
@@ -95,14 +100,18 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private var syntheticFrame: Int64 = 0
 
     @MainActor
-    init(target: CaptureTarget, config: RecordingConfig, outputURL: URL) {
+    init(target: CaptureTarget, config: RecordingConfig, outputURL: URL,
+         includedWindowIDs: [CGWindowID] = []) {
         self.target = target
         self.config = config
         self.outputURL = outputURL
+        self.includedWindowIDs = includedWindowIDs
         self.wantsAudio = config.format != .gif
             && config.audioBitrateKbps > 0
             && Prefs.captureSystemAudio
-        self.showsCursor = Prefs.showsCursor
+        // With cursor doubling on, the overlay draws the (magnified) cursor;
+        // letting SCK draw the real one too would show two pointers.
+        self.showsCursor = Prefs.showsCursor && !Prefs.doubleCursorSize
         var mic = false
         if case .synthetic = target {
             mic = false // debug mode has no SCStream to carry the mic
@@ -482,7 +491,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             // Follows the window across Spaces and displays.
             return SCContentFilter(desktopIndependentWindow: window)
         case .pinned(let window, let display, _):
-            return SCContentFilter(display: display, including: [window])
+            // Compositing the overlays alongside the window keeps input
+            // visualization working in pinned mode too.
+            let overlays = try await overlayWindows()
+            return SCContentFilter(display: display, including: [window] + overlays)
         case .synthetic:
             throw ScrecError.writerFailed("synthetic target has no filter")
         case .display(let display), .region(let display, _):
@@ -491,10 +503,22 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             let ownApps = content.applications.filter {
                 $0.bundleIdentifier == Bundle.main.bundleIdentifier
             }
+            // screc's windows stay out of the picture — except the input
+            // overlays, which exist precisely to be recorded.
+            let overlays = content.windows.filter {
+                includedWindowIDs.contains($0.windowID)
+            }
             return SCContentFilter(display: display,
                                    excludingApplications: ownApps,
-                                   exceptingWindows: [])
+                                   exceptingWindows: overlays)
         }
+    }
+
+    private func overlayWindows() async throws -> [SCWindow] {
+        guard !includedWindowIDs.isEmpty else { return [] }
+        let content = try await SCShareableContent
+            .excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        return content.windows.filter { includedWindowIDs.contains($0.windowID) }
     }
 
     /// See OutputSizing.pixelSize — extracted so the unit tests can compile

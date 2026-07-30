@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowTracker: FocusedWindowTracker!
     private var pinnedTracker: PinnedWindowTracker!
     private var countdownController: CountdownController!
+    private var inputOverlayController: InputOverlayController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -64,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.pinnedTracker = pinnedTracker
         countdownController = CountdownController()
         state.countdown = countdownController
+        inputOverlayController = InputOverlayController()
+        state.inputOverlay = inputOverlayController
         windowManager = WindowManager(state: state, permissions: permissions, store: store)
         statusItemController = StatusItemController(
             state: state,

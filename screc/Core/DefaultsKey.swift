@@ -20,6 +20,11 @@ enum DefaultsKey {
     static let fileNamePattern = "fileNamePattern"
     static let notifyOnFinish = "notifyOnFinish"
     static let countdownEnabled = "countdownEnabled"
+    static let doubleCursorSize = "doubleCursorSize"
+    static let showsMouseClicks = "showsMouseClicks"
+    static let showsMouseScroll = "showsMouseScroll"
+    static let showsKeyStrokes = "showsKeyStrokes"
+    static let showsKeyCombinations = "showsKeyCombinations"
     static let micEnabled = "micEnabled"
     static let micDeviceID = "micDeviceID"
     static let micGain = "micGain"
@@ -54,6 +59,38 @@ enum Prefs {
     /// 3-2-1 overlay before capture starts. Off by default.
     static var countdownEnabled: Bool {
         UserDefaults.standard.bool(forKey: DefaultsKey.countdownEnabled)
+    }
+
+    // MARK: Input visualization (all off by default)
+
+    /// Draws a 2× copy of the cursor into the recording; the real cursor is
+    /// then suppressed in the stream so only one appears.
+    static var doubleCursorSize: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.doubleCursorSize)
+    }
+    static var showsMouseClicks: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.showsMouseClicks)
+    }
+    static var showsMouseScroll: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.showsMouseScroll)
+    }
+    static var showsKeyStrokes: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.showsKeyStrokes)
+    }
+    static var showsKeyCombinations: Bool {
+        UserDefaults.standard.bool(forKey: DefaultsKey.showsKeyCombinations)
+    }
+
+    /// Keyboard visualization needs global key events — Input Monitoring.
+    static var needsKeyMonitoring: Bool {
+        showsKeyStrokes || showsKeyCombinations
+    }
+
+    /// Whether any visualization needs the captured overlay at all. When
+    /// false, recording skips it entirely.
+    static var needsInputOverlay: Bool {
+        (showsCursor && doubleCursorSize) || showsMouseClicks || showsMouseScroll
+            || needsKeyMonitoring
     }
     /// Microphone capture. Off by default; enabling it in Settings triggers
     /// the permission request.
