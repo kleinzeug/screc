@@ -23,7 +23,7 @@ DIST="dist"
 ARCHIVE="$DIST/$APP_NAME.xcarchive"
 EXPORT_DIR="$DIST/export"
 APP="$EXPORT_DIR/$APP_NAME.app"
-KEYCHAIN_PROFILE="screc"
+KEYCHAIN_PROFILE="notarization"
 
 step() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[1;31merror:\033[0m %s\n' "$1" >&2; exit 1; }

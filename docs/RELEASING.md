@@ -55,13 +55,25 @@ for handing a build to a tester without TestFlight. It is not a
 distribution channel.
 
 Prerequisites: a **Developer ID Application** certificate, and a notarytool
-keychain profile named `screc`:
+keychain profile named `notarization`.
+
+The profile name is deliberately generic rather than per-app: one
+app-specific password covers notarization for every Kleinzeug app on this
+machine, so revoking or rotating it is a single operation. Create it once:
 
 ```sh
-xcrun notarytool store-credentials screc \
+xcrun notarytool store-credentials notarization \
   --apple-id you@example.com --team-id YOURTEAMID \
   --password <app-specific password from appleid.apple.com>
 ```
+
+The password itself is never stored in the repository — it lives in the
+login keychain, and only the profile *name* is referenced by
+`tools/release.sh`. Generate app-specific passwords at
+[appleid.apple.com](https://appleid.apple.com) → Sign-In and Security →
+App-Specific Passwords; revoking one there immediately invalidates it, after
+which re-running the command above with a fresh password is all that is
+needed.
 
 ```sh
 tools/release.sh                  # archive → export → notarize → staple → zip
@@ -85,7 +97,7 @@ should list it.
 **Notarization rejected** — ask Apple why:
 
 ```sh
-xcrun notarytool log <submission-id> --keychain-profile screc
+xcrun notarytool log <submission-id> --keychain-profile notarization
 ```
 
 **Gatekeeper still warns after stapling** — the quarantine attribute on your
