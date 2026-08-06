@@ -134,7 +134,12 @@ final class InputOverlaySource: @unchecked Sendable {
 // MARK: - Visual state
 
 /// Everything to draw, in global (AppKit, bottom-left origin) coordinates.
-struct InputVisualState {
+///
+/// `@unchecked Sendable`: a value type whose only reference is the cursor
+/// image, captured once on the main actor and thereafter only read. Required
+/// because it crosses to the capture queue inside a lock (whose state must be
+/// Sendable) — the older SDK on CI enforces this where the newer one does not.
+struct InputVisualState: @unchecked Sendable {
     struct KeyHit {
         let label: String
         let time: CFTimeInterval
