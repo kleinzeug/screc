@@ -106,8 +106,9 @@ final class MicLevelMonitor: ObservableObject {
 /// All microphones visible to the system, for the Settings device picker.
 enum MicDevices {
     struct Device: Identifiable, Equatable {
-        var id: String // AVCaptureDevice.uniqueID
+        var id: String // AVCaptureDevice.uniqueID, == the CoreAudio UID
         var name: String
+        var isBluetooth: Bool
     }
 
     static func all() -> [Device] {
@@ -115,7 +116,102 @@ enum MicDevices {
                                          mediaType: .audio,
                                          position: .unspecified)
             .devices
-            .map { Device(id: $0.uniqueID, name: $0.localizedName) }
+            .map { Device(id: $0.uniqueID, name: $0.localizedName,
+                          isBluetooth: AudioDevices.isBluetooth(uid: $0.uniqueID)) }
+    }
+
+    /// The device a given selection resolves to ("" = the system default).
+    static func resolved(_ selection: String) -> Device? {
+        let devices = all()
+        if !selection.isEmpty {
+            return devices.first { $0.id == selection }
+        }
+        guard let uid = AudioDevices.defaultInputUID() else { return nil }
+        return devices.first { $0.id == uid }
+    }
+
+    static func firstNonBluetooth() -> Device? {
+        all().first { !$0.isBluetooth }
+    }
+}
+
+/// CoreAudio facts AVFoundation does not expose — chiefly whether a device is
+/// Bluetooth, which decides whether opening its microphone will drag playback
+/// down to hands-free (telephone) quality.
+enum AudioDevices {
+    static func isBluetooth(uid: String) -> Bool {
+        guard let transport = transport(ofUID: uid) else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth
+            || transport == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    /// True when the microphone about to be opened belongs to the same
+    /// Bluetooth device currently playing audio — the case where enabling the
+    /// mic audibly wrecks what the user is listening to.
+    static func micWouldDegradePlayback(selection: String) -> Bool {
+        let inputUID = selection.isEmpty ? defaultInputUID() : selection
+        guard let inputUID, isBluetooth(uid: inputUID),
+              let outputUID = defaultOutputUID()
+        else { return false }
+        // The same headset reports different UIDs per direction
+        // ("<address>:input" vs "<address>:output"), so compare the device
+        // behind them, not the strings.
+        return hardwareIdentity(inputUID) == hardwareIdentity(outputUID)
+    }
+
+    /// Strips CoreAudio's per-direction suffix so the two sides of one device
+    /// compare equal.
+    private static func hardwareIdentity(_ uid: String) -> String {
+        for suffix in [":input", ":output"] where uid.hasSuffix(suffix) {
+            return String(uid.dropLast(suffix.count))
+        }
+        return uid
+    }
+
+    static func defaultInputUID() -> String? {
+        uid(of: defaultDevice(kAudioHardwarePropertyDefaultInputDevice))
+    }
+
+    static func defaultOutputUID() -> String? {
+        uid(of: defaultDevice(kAudioHardwarePropertyDefaultOutputDevice))
+    }
+
+    private static func defaultDevice(_ selector: AudioObjectPropertySelector) -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var device = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                   &address, 0, nil, &size, &device)
+        return device
+    }
+
+    private static func uid(of device: AudioDeviceID) -> String? {
+        guard device != kAudioObjectUnknown else { return nil }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var uid: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        let status = withUnsafeMutablePointer(to: &uid) {
+            AudioObjectGetPropertyData(device, &address, 0, nil, &size, $0)
+        }
+        return status == noErr ? uid as String : nil
+    }
+
+    private static func transport(ofUID uid: String) -> UInt32? {
+        guard let device = CoreAudioDeviceLookup.deviceID(forUID: uid) else { return nil }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
+        return status == noErr ? transport : nil
     }
 }
 
