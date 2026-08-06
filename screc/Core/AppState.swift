@@ -144,8 +144,23 @@ final class AppState: ObservableObject {
         countdown?.cancel() // fires the completion with finished = false
     }
 
-    /// The screen a request will record on — where the countdown and the
-    /// keyboard/combination HUD belong.
+    /// The global rect a request will capture — the mapping the engine draws
+    /// the input visualization through. Window modes update it as the window
+    /// moves; it is exactly the area the passe-partout cuts out.
+    private static func captureArea(for request: CaptureRequest) -> CGRect {
+        switch request {
+        case .display(let id):
+            return NSScreen.screens.first { $0.displayID == id }?.frame ?? .zero
+        case .region(let id, let rect):
+            return globalRect(displayID: id, localTopLeft: rect) ?? .zero
+        case .pinnedWindow(let selection):
+            return pinnedHole(windowFrame: selection.frame, norm: selection.normalizedRect)
+        case .focusedWindow:
+            return FocusedWindowTracker.focusedWindowInfo()?.frame ?? .zero
+        }
+    }
+
+    /// The screen a request will record on — where the countdown belongs.
     private static func targetScreen(for request: CaptureRequest) -> NSScreen {
         let fallback = NSScreen.main ?? NSScreen.screens[0]
         switch request {
@@ -438,17 +453,14 @@ final class AppState: ObservableObject {
     private func begin(target: CaptureTarget, request: CaptureRequest) async throws {
         let config = PresetLibrary.currentConfig
         activeConfig = config
-        // The input overlay has to exist BEFORE the capture filter is built:
-        // the filter includes it by window id, and unlike every other screc
-        // window it must appear in the recording.
-        var overlayWindowIDs: [CGWindowID] = []
-        if Prefs.needsInputOverlay, let inputOverlay {
-            overlayWindowIDs = inputOverlay.start(hudScreen: Self.targetScreen(for: request))
-        }
+        // Input visualization is drawn into the frames by the engine, so it
+        // only needs to be observing before capture starts.
+        let overlaySource = Prefs.needsInputOverlay ? inputOverlay?.start() : nil
         let url = store.newOutputURL(fileExtension: "mp4")
         store.activeRecordingURL = url
         let engine = ScreenRecorderEngine(target: target, config: config, outputURL: url,
-                                          includedWindowIDs: overlayWindowIDs)
+                                          overlay: overlaySource,
+                                          overlayArea: Self.captureArea(for: request))
         engine.onStatsUpdate = { [weak self] stats in
             self?.stats = stats
         }
@@ -500,6 +512,7 @@ final class AppState: ObservableObject {
                 initialWindowID: info?.id ?? 0,
                 onFrame: { [weak self] frame in
                     self?.passepartout?.update(hole: frame)
+                    self?.engine?.updateOverlayArea(frame)
                 },
                 onWindowChange: { [weak self] windowID in
                     self?.switchFocusRecording(to: windowID)
@@ -544,7 +557,9 @@ final class AppState: ObservableObject {
         guard phase == .recording, engine != nil, let selection = currentPinned else { return }
         currentPinned?.frame = frame
         let norm = selection.normalizedRect
-        passepartout?.update(hole: Self.pinnedHole(windowFrame: frame, norm: norm))
+        let hole = Self.pinnedHole(windowFrame: frame, norm: norm)
+        passepartout?.update(hole: hole)
+        engine?.updateOverlayArea(hole)
         guard let screen = Self.screenContaining(frame) else { return }
         let sourceRect = Self.pinnedSourceRect(windowFrame: frame, norm: norm, screen: screen)
         if screen.displayID == currentPinnedDisplayID {

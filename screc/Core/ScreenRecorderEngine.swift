@@ -50,11 +50,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     /// stop. True only with the feature enabled AND the permission granted.
     let capturesMic: Bool
     private let micDeviceID: String
-    /// Windows that must appear in the recording despite screc's own app
-    /// being excluded — the input-visualization overlays. Display and region
-    /// filters honor this; a window-scoped filter composites only its window,
-    /// so overlays cannot appear there at all.
-    private let includedWindowIDs: [CGWindowID]
+    /// Input visualization, drawn into each frame rather than onto the screen
+    /// (an on-screen overlay would be visible to the user, and a hidden one
+    /// would not be captured at all).
+    private let overlay: InputOverlaySource?
 
     private var fps: Int { config.maxFPS }
     /// Whether a system-audio track is being written (mix-down needs to know
@@ -98,14 +97,25 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private var syntheticTicker: DispatchSourceTimer?
     private var pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var syntheticFrame: Int64 = 0
+    /// Global AppKit rect the captured frame covers — the mapping the overlay
+    /// is drawn through. Follows the window in the modes that track one.
+    private var overlayArea: CGRect = .zero
+    /// The last frame as delivered, BEFORE decorations were drawn on it.
+    /// Idle frames are re-composited from this, so a click ring can appear
+    /// (and fade) on a screen that is not otherwise changing.
+    private var lastCleanBuffer: CVPixelBuffer?
+    /// True while the previous idle frame still carried decorations, so the
+    /// frame that clears them is emitted too rather than leaving them frozen.
+    private var overlayWasDrawing = false
 
     @MainActor
     init(target: CaptureTarget, config: RecordingConfig, outputURL: URL,
-         includedWindowIDs: [CGWindowID] = []) {
+         overlay: InputOverlaySource? = nil, overlayArea: CGRect = .zero) {
         self.target = target
         self.config = config
         self.outputURL = outputURL
-        self.includedWindowIDs = includedWindowIDs
+        self.overlay = overlay
+        self.overlayArea = overlayArea
         self.wantsAudio = config.format != .gif
             && config.audioBitrateKbps > 0
             && Prefs.captureSystemAudio
@@ -221,6 +231,19 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             throw ScrecError.writerFailed("video settings rejected (\(width)×\(height))")
         }
         writer.add(videoInput)
+
+        if overlay != nil {
+            // Idle frames are re-composited and appended as raw buffers, which
+            // needs an adaptor over the same input. Must exist before writing
+            // starts.
+            pixelAdaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: videoInput,
+                sourcePixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey as String: width,
+                    kCVPixelBufferHeightKey as String: height,
+                ])
+        }
 
         if wantsAudio {
             let audioSettings: [String: Any] = [
@@ -491,10 +514,7 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             // Follows the window across Spaces and displays.
             return SCContentFilter(desktopIndependentWindow: window)
         case .pinned(let window, let display, _):
-            // Compositing the overlays alongside the window keeps input
-            // visualization working in pinned mode too.
-            let overlays = try await overlayWindows()
-            return SCContentFilter(display: display, including: [window] + overlays)
+            return SCContentFilter(display: display, including: [window])
         case .synthetic:
             throw ScrecError.writerFailed("synthetic target has no filter")
         case .display(let display), .region(let display, _):
@@ -503,22 +523,15 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             let ownApps = content.applications.filter {
                 $0.bundleIdentifier == Bundle.main.bundleIdentifier
             }
-            // screc's windows stay out of the picture — except the input
-            // overlays, which exist precisely to be recorded.
-            let overlays = content.windows.filter {
-                includedWindowIDs.contains($0.windowID)
-            }
             return SCContentFilter(display: display,
                                    excludingApplications: ownApps,
-                                   exceptingWindows: overlays)
+                                   exceptingWindows: [])
         }
     }
 
-    private func overlayWindows() async throws -> [SCWindow] {
-        guard !includedWindowIDs.isEmpty else { return [] }
-        let content = try await SCShareableContent
-            .excludingDesktopWindows(true, onScreenWindowsOnly: true)
-        return content.windows.filter { includedWindowIDs.contains($0.windowID) }
+    /// The captured area moved (window modes track their window).
+    func updateOverlayArea(_ rect: CGRect) {
+        sampleQueue.async { [self] in overlayArea = rect }
     }
 
     /// See OutputSizing.pixelSize — extracted so the unit tests can compile
@@ -543,7 +556,10 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     private func startTimers() {
         sampleQueue.async { [self] in
             let hb = DispatchSource.makeTimerSource(queue: sampleQueue)
-            hb.schedule(deadline: .now() + 1, repeating: 1)
+            // With input visualization on, idle frames carry the animation, so
+            // the heartbeat runs at the capture rate instead of once a second.
+            let interval = overlay != nil ? 1.0 / Double(fps) : 1.0
+            hb.schedule(deadline: .now() + interval, repeating: interval)
             hb.setEventHandler { [weak self] in self?.heartbeatTick() }
             hb.resume()
             heartbeat = hb
@@ -592,6 +608,13 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
             framesDropped += 1
             return
         }
+        if overlay != nil, let pixels = CMSampleBufferGetImageBuffer(buffer) {
+            // Keep a pristine copy first: idle frames re-composite from it, so
+            // decorations can appear and fade on an otherwise static screen.
+            retainCleanCopy(of: pixels)
+            InputOverlayCompositor.composite(overlay!.snapshot(), area: overlayArea,
+                                             into: pixels)
+        }
         let pts = buffer.presentationTimeStamp
         guard !lastVideoPTS.isValid || pts > lastVideoPTS else {
             // A real frame racing a just-appended heartbeat copy can arrive
@@ -628,8 +651,35 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
     /// host clock share a time domain).
     private func heartbeatTick() {
         guard sessionStarted, !finishing, !paused,
-              let last = lastVideoBuffer,
-              let videoInput, videoInput.isReadyForMoreMediaData,
+              let videoInput, videoInput.isReadyForMoreMediaData
+        else { return }
+
+        // Input visualization needs frames even when nothing on screen
+        // changes — a click on a static desktop produces no damage, so
+        // without this the ring would never be recorded. Re-composite the
+        // last clean frame with the current state instead.
+        if let overlay, let adaptor = pixelAdaptor, let clean = lastCleanBuffer {
+            let state = overlay.snapshot()
+            if state.hasContent || overlayWasDrawing {
+                overlayWasDrawing = state.hasContent
+                let pts = CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()),
+                                         pauseOffset)
+                guard !lastVideoPTS.isValid || pts > lastVideoPTS,
+                      let pool = adaptor.pixelBufferPool
+                else { return }
+                var fresh: CVPixelBuffer?
+                guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &fresh) == kCVReturnSuccess,
+                      let fresh
+                else { return }
+                Self.copyPixels(from: clean, to: fresh)
+                InputOverlayCompositor.composite(state, area: overlayArea, into: fresh)
+                adaptor.append(fresh, withPresentationTime: pts)
+                lastVideoPTS = pts
+                return
+            }
+        }
+
+        guard let last = lastVideoBuffer,
               CACurrentMediaTime() - lastArrivalTime > 1.2
         else { return }
         let pts = CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), pauseOffset)
@@ -647,6 +697,41 @@ final class ScreenRecorderEngine: NSObject, SCStreamOutput, SCStreamDelegate, @u
         else { return }
         videoInput.append(copy)
         lastVideoPTS = pts
+    }
+
+    /// Snapshots a delivered frame before decorations are drawn onto it.
+    private func retainCleanCopy(of source: CVPixelBuffer) {
+        guard let pool = pixelAdaptor?.pixelBufferPool else { return }
+        var copy: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &copy) == kCVReturnSuccess,
+              let copy
+        else { return }
+        Self.copyPixels(from: source, to: copy)
+        lastCleanBuffer = copy
+    }
+
+    private static func copyPixels(from source: CVPixelBuffer, to destination: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(destination, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+            CVPixelBufferUnlockBaseAddress(destination, [])
+        }
+        guard let from = CVPixelBufferGetBaseAddress(source),
+              let to = CVPixelBufferGetBaseAddress(destination)
+        else { return }
+        let sourceStride = CVPixelBufferGetBytesPerRow(source)
+        let destinationStride = CVPixelBufferGetBytesPerRow(destination)
+        let rows = min(CVPixelBufferGetHeight(source), CVPixelBufferGetHeight(destination))
+        if sourceStride == destinationStride {
+            memcpy(to, from, sourceStride * rows)
+        } else {
+            let bytes = min(sourceStride, destinationStride)
+            for row in 0..<rows {
+                memcpy(to.advanced(by: row * destinationStride),
+                       from.advanced(by: row * sourceStride), bytes)
+            }
+        }
     }
 
     private static func retimed(_ sample: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
