@@ -42,11 +42,22 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
 
     func showSettings() {
-        if settingsWindow == nil {
-            settingsWindow = makeWindow(title: "screc Settings",
-                                        content: AnyView(SettingsView(permissions: permissions)))
+        // Rebuilt every time on purpose: the view buffers its edits in @State
+        // until Apply, so a reused window would reopen showing a draft the
+        // user had cancelled.
+        if let existing = settingsWindow, existing.isVisible {
+            present(existing)
+            return
         }
-        present(settingsWindow!)
+        settingsWindow?.close()
+        let window = makeWindow(
+            title: "screc Settings",
+            content: AnyView(SettingsView(permissions: permissions,
+                                          onClose: { [weak self] in
+                                              self?.settingsWindow?.close()
+                                          })))
+        settingsWindow = window
+        present(window)
     }
 
     func showGIFEditor(url: URL) {

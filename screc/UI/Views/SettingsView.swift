@@ -4,35 +4,139 @@ import ServiceManagement
 import SwiftUI
 @preconcurrency import UserNotifications
 
+/// Every value the Settings dialog edits, in one comparable lump — the basis
+/// for "has anything changed?", for Revert, and for the single write on Apply.
+private struct SettingsDraft: Equatable {
+    var showsCursor = true
+    var captureSystemAudio = true
+    var discardShortRecordings = true
+    var notifyOnFinish = true
+    var countdownEnabled = false
+    var micEnabled = false
+    var micDeviceID = ""
+    var micGain = 1.0
+    var doubleCursorSize = false
+    var showsMouseClicks = false
+    var showsMouseScroll = false
+    var showsKeyStrokes = false
+    var showsKeyCombinations = false
+    var storageChoice = "tmp"
+    var customStoragePath = ""
+    var fileNamePattern = "screc-{date}-{time}"
+    var launchAtLogin = false
+    var config = RecordingConfig()
+    var customPresets: [RecordingPresetDef] = []
+
+    /// Reads the persisted state, including the one value that is not a
+    /// preference at all: whether the login item is registered.
+    static func current() -> SettingsDraft {
+        SettingsDraft(
+            showsCursor: Prefs.showsCursor,
+            captureSystemAudio: Prefs.captureSystemAudio,
+            discardShortRecordings: Prefs.discardShortRecordings,
+            notifyOnFinish: Prefs.notifyOnFinish,
+            countdownEnabled: Prefs.countdownEnabled,
+            micEnabled: Prefs.micEnabled,
+            micDeviceID: Prefs.micDeviceID,
+            micGain: Prefs.micGain,
+            doubleCursorSize: Prefs.doubleCursorSize,
+            showsMouseClicks: Prefs.showsMouseClicks,
+            showsMouseScroll: Prefs.showsMouseScroll,
+            showsKeyStrokes: Prefs.showsKeyStrokes,
+            showsKeyCombinations: Prefs.showsKeyCombinations,
+            storageChoice: Prefs.storageChoice,
+            customStoragePath: Prefs.customStoragePath,
+            fileNamePattern: Prefs.fileNamePattern,
+            launchAtLogin: SMAppService.mainApp.status == .enabled,
+            config: PresetLibrary.currentConfig,
+            customPresets: PresetLibrary.customPresets())
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var permissions: PermissionManager
-    @AppStorage(DefaultsKey.showsCursor) private var showsCursor = true
-    @AppStorage(DefaultsKey.captureSystemAudio) private var captureSystemAudio = true
-    @AppStorage(DefaultsKey.discardShortRecordings) private var discardShortRecordings = true
-    @AppStorage(DefaultsKey.notifyOnFinish) private var notifyOnFinish = true
-    @AppStorage(DefaultsKey.countdownEnabled) private var countdownEnabled = false
-    @AppStorage(DefaultsKey.micEnabled) private var micEnabled = false
-    @AppStorage(DefaultsKey.micDeviceID) private var micDeviceID = ""
-    @AppStorage(DefaultsKey.micGain) private var micGain = 1.0
-    @AppStorage(DefaultsKey.doubleCursorSize) private var doubleCursorSize = false
-    @AppStorage(DefaultsKey.showsMouseClicks) private var showsMouseClicks = false
-    @AppStorage(DefaultsKey.showsMouseScroll) private var showsMouseScroll = false
-    @AppStorage(DefaultsKey.showsKeyStrokes) private var showsKeyStrokes = false
-    @AppStorage(DefaultsKey.showsKeyCombinations) private var showsKeyCombinations = false
+    /// Closes the hosting window; the window is rebuilt on every open, so a
+    /// discarded draft never survives into the next session.
+    var onClose: () -> Void
+
+    // Nothing below is written to disk until Apply — @State, deliberately not
+    // @AppStorage, so Cancel and Revert have something to go back to.
+    @State private var showsCursor: Bool
+    @State private var captureSystemAudio: Bool
+    @State private var discardShortRecordings: Bool
+    @State private var notifyOnFinish: Bool
+    @State private var countdownEnabled: Bool
+    @State private var micEnabled: Bool
+    @State private var micDeviceID: String
+    @State private var micGain: Double
+    @State private var doubleCursorSize: Bool
+    @State private var showsMouseClicks: Bool
+    @State private var showsMouseScroll: Bool
+    @State private var showsKeyStrokes: Bool
+    @State private var showsKeyCombinations: Bool
+    @State private var storageChoice: String
+    @State private var customStoragePath: String
+    @State private var fileNamePattern: String
+    @State private var launchAtLogin: Bool
+    @State private var config: RecordingConfig
+    @State private var customPresets: [RecordingPresetDef]
+
+    /// What is currently on disk. Revert restores it; Apply replaces it.
+    @State private var baseline: SettingsDraft
+    /// A folder chosen but not yet applied — the security-scoped bookmark is
+    /// only created on Apply, so cancelling grants nothing.
+    @State private var pendingCustomFolder: URL?
+
     @State private var keyMonitoringGranted = InputMonitor.keyAccessGranted
     @StateObject private var micMonitor = MicLevelMonitor()
     @State private var micDevices: [MicDevices.Device] = []
     @State private var micDenied = false
     @State private var advancedExpanded = false
-    @AppStorage(DefaultsKey.storageChoice) private var storageChoice = "tmp"
-    @AppStorage(DefaultsKey.customStoragePath) private var customStoragePath = ""
-    @AppStorage(DefaultsKey.fileNamePattern) private var fileNamePattern = "screc-{date}-{time}"
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var notificationsDenied = false
 
-    /// The live configuration (persisted on every change).
-    @State private var config = PresetLibrary.currentConfig
-    @State private var customPresets = PresetLibrary.customPresets()
+    init(permissions: PermissionManager, onClose: @escaping () -> Void) {
+        self.permissions = permissions
+        self.onClose = onClose
+        let saved = SettingsDraft.current()
+        _showsCursor = State(initialValue: saved.showsCursor)
+        _captureSystemAudio = State(initialValue: saved.captureSystemAudio)
+        _discardShortRecordings = State(initialValue: saved.discardShortRecordings)
+        _notifyOnFinish = State(initialValue: saved.notifyOnFinish)
+        _countdownEnabled = State(initialValue: saved.countdownEnabled)
+        _micEnabled = State(initialValue: saved.micEnabled)
+        _micDeviceID = State(initialValue: saved.micDeviceID)
+        _micGain = State(initialValue: saved.micGain)
+        _doubleCursorSize = State(initialValue: saved.doubleCursorSize)
+        _showsMouseClicks = State(initialValue: saved.showsMouseClicks)
+        _showsMouseScroll = State(initialValue: saved.showsMouseScroll)
+        _showsKeyStrokes = State(initialValue: saved.showsKeyStrokes)
+        _showsKeyCombinations = State(initialValue: saved.showsKeyCombinations)
+        _storageChoice = State(initialValue: saved.storageChoice)
+        _customStoragePath = State(initialValue: saved.customStoragePath)
+        _fileNamePattern = State(initialValue: saved.fileNamePattern)
+        _launchAtLogin = State(initialValue: saved.launchAtLogin)
+        _config = State(initialValue: saved.config)
+        _customPresets = State(initialValue: saved.customPresets)
+        _baseline = State(initialValue: saved)
+    }
+
+    /// The edits as they stand right now.
+    private var draft: SettingsDraft {
+        SettingsDraft(
+            showsCursor: showsCursor, captureSystemAudio: captureSystemAudio,
+            discardShortRecordings: discardShortRecordings,
+            notifyOnFinish: notifyOnFinish, countdownEnabled: countdownEnabled,
+            micEnabled: micEnabled, micDeviceID: micDeviceID, micGain: micGain,
+            doubleCursorSize: doubleCursorSize,
+            showsMouseClicks: showsMouseClicks, showsMouseScroll: showsMouseScroll,
+            showsKeyStrokes: showsKeyStrokes,
+            showsKeyCombinations: showsKeyCombinations,
+            storageChoice: storageChoice, customStoragePath: customStoragePath,
+            fileNamePattern: fileNamePattern, launchAtLogin: launchAtLogin,
+            config: config, customPresets: customPresets)
+    }
+
+    private var isDirty: Bool { draft != baseline }
 
     /// Explicit picker selection: a preset id, or "custom". Built-in presets
     /// hide the Format Settings section; custom presets and "Custom" expand
@@ -111,6 +215,111 @@ struct SettingsView: View {
         keyMonitoringGranted = InputMonitor.keyAccessGranted
     }
 
+    /// True when opening this microphone would drag the user's own playback
+    /// down to hands-free quality (same Bluetooth device in and out).
+    private var bluetoothMicWarning: Bool {
+        AudioDevices.micWouldDegradePlayback(selection: micDeviceID)
+    }
+
+    // MARK: - Apply / Revert / Cancel
+
+    /// The single write. Preferences, presets, the security-scoped bookmark
+    /// and the login-item registration all land here and nowhere else.
+    private func apply() {
+        let edited = draft
+        let defaults = UserDefaults.standard
+        defaults.set(edited.showsCursor, forKey: DefaultsKey.showsCursor)
+        defaults.set(edited.captureSystemAudio, forKey: DefaultsKey.captureSystemAudio)
+        defaults.set(edited.discardShortRecordings, forKey: DefaultsKey.discardShortRecordings)
+        defaults.set(edited.notifyOnFinish, forKey: DefaultsKey.notifyOnFinish)
+        defaults.set(edited.countdownEnabled, forKey: DefaultsKey.countdownEnabled)
+        defaults.set(edited.micEnabled, forKey: DefaultsKey.micEnabled)
+        defaults.set(edited.micDeviceID, forKey: DefaultsKey.micDeviceID)
+        defaults.set(edited.micGain, forKey: DefaultsKey.micGain)
+        defaults.set(edited.doubleCursorSize, forKey: DefaultsKey.doubleCursorSize)
+        defaults.set(edited.showsMouseClicks, forKey: DefaultsKey.showsMouseClicks)
+        defaults.set(edited.showsMouseScroll, forKey: DefaultsKey.showsMouseScroll)
+        defaults.set(edited.showsKeyStrokes, forKey: DefaultsKey.showsKeyStrokes)
+        defaults.set(edited.showsKeyCombinations, forKey: DefaultsKey.showsKeyCombinations)
+        defaults.set(edited.storageChoice, forKey: DefaultsKey.storageChoice)
+        defaults.set(edited.fileNamePattern, forKey: DefaultsKey.fileNamePattern)
+        PresetLibrary.setCurrent(edited.config)
+        PresetLibrary.persistCustom(edited.customPresets)
+
+        // Writes the path plus its security-scoped bookmark together.
+        if let folder = pendingCustomFolder {
+            RecordingStore.rememberCustomFolder(folder)
+            pendingCustomFolder = nil
+        } else {
+            defaults.set(edited.customStoragePath, forKey: DefaultsKey.customStoragePath)
+        }
+
+        // Not a preference — a system registration, so only touch it when it
+        // actually differs from reality.
+        if edited.launchAtLogin != (SMAppService.mainApp.status == .enabled) {
+            do {
+                if edited.launchAtLogin {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                Log.app.error("launch at login: \(error.localizedDescription)")
+                launchAtLogin = SMAppService.mainApp.status == .enabled
+            }
+        }
+        baseline = draft
+    }
+
+    /// Back to what is on disk, without closing.
+    private func revert() {
+        let saved = baseline
+        showsCursor = saved.showsCursor
+        captureSystemAudio = saved.captureSystemAudio
+        discardShortRecordings = saved.discardShortRecordings
+        notifyOnFinish = saved.notifyOnFinish
+        countdownEnabled = saved.countdownEnabled
+        micEnabled = saved.micEnabled
+        micDeviceID = saved.micDeviceID
+        micGain = saved.micGain
+        doubleCursorSize = saved.doubleCursorSize
+        showsMouseClicks = saved.showsMouseClicks
+        showsMouseScroll = saved.showsMouseScroll
+        showsKeyStrokes = saved.showsKeyStrokes
+        showsKeyCombinations = saved.showsKeyCombinations
+        storageChoice = saved.storageChoice
+        customStoragePath = saved.customStoragePath
+        fileNamePattern = saved.fileNamePattern
+        launchAtLogin = saved.launchAtLogin
+        config = saved.config
+        customPresets = saved.customPresets
+        pendingCustomFolder = nil
+        // Derived UI state has to follow the values back.
+        selection = (PresetLibrary.builtins + saved.customPresets)
+            .first { $0.config == saved.config }?.id ?? "custom"
+        bitrateCustomMode = !Self.bitratePresets.contains(saved.config.videoBitrateKbps)
+        refreshMicStatus()
+    }
+
+    private var buttonPanel: some View {
+        HStack(spacing: 12) {
+            Button("Revert") { revert() }
+                .disabled(!isDirty)
+                .help("Undo every change back to what is saved")
+            Spacer()
+            Button("Cancel") { onClose() }
+                .keyboardShortcut(.cancelAction)
+            Button("Apply") {
+                apply()
+                onClose()
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!isDirty)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
+
     private var videoFPSOptions: [Int] { [15, 24, 30, 60] }
     private var gifFPSOptions: [Int] { [5, 10, 12, 15] }
     private static let bitratePresets = [500, 800, 1200, 2000, 3000, 5000, 8000, 12000]
@@ -158,8 +367,11 @@ struct SettingsView: View {
             header
             Divider()
             settingsForm
+            Divider()
+            // Fixed: the form scrolls above it, these never move.
+            buttonPanel
         }
-        .frame(width: 520, height: formatSettingsVisible ? 760 : 560)
+        .frame(width: 520, height: formatSettingsVisible ? 800 : 600)
     }
 
     private var header: some View {
@@ -439,6 +651,19 @@ struct SettingsView: View {
                                 Text(device.name).tag(device.id)
                             }
                         }
+                        if bluetoothMicWarning {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("This microphone belongs to the Bluetooth device you are listening through. macOS switches such a device to hands-free mode whenever its microphone is open, which drops playback and the recorded system audio to telephone quality.")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                if let wired = MicDevices.firstNonBluetooth() {
+                                    Button("Use “\(wired.name)” instead") {
+                                        micDeviceID = wired.id
+                                    }
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
                         LabeledContent("Input meter") {
                             MicMeterBar(level: micMonitor.level,
                                         width: Self.micControlWidth)
@@ -490,7 +715,7 @@ struct SettingsView: View {
                     }
                 }
                 if anyInputVisualization {
-                    Text("Drawn into full-screen and region recordings. A recording scoped to a single window composites only that window, so overlays cannot appear in Focused Window mode.")
+                    Text("Drawn into the recording only — your own screen stays clean. Works in every capture mode.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -500,7 +725,7 @@ struct SettingsView: View {
                 ForEach(KeyboardShortcuts.Name.allRecordingShortcuts, id: \.name) { entry in
                     ShortcutRow(name: entry.name, label: entry.label)
                 }
-                Text("Each mode hotkey starts that mode with what it last recorded; any of them also stops a running recording. Hover a shortcut to clear it back to the default.")
+                Text("Each mode hotkey starts that mode with what it last recorded; any of them also stops a running recording. Hover a shortcut to clear it back to the default. Hotkey changes apply immediately — Revert and Cancel do not undo them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -541,7 +766,7 @@ struct SettingsView: View {
                 Toggle("Discard recordings shorter than 3 seconds",
                        isOn: $discardShortRecordings)
                 Toggle("Countdown before recording (3 s)", isOn: $countdownEnabled)
-                Toggle("Launch at login", isOn: launchAtLoginBinding)
+                Toggle("Launch at login", isOn: $launchAtLogin)
                 // Kept last: its "notifications are off" warning appears
                 // directly beneath it.
                 Toggle("Notify when a recording is saved", isOn: $notifyOnFinish)
@@ -609,8 +834,12 @@ struct SettingsView: View {
             refreshKeyMonitoringStatus()
             Task { await refreshNotificationStatus() }
         }
-        .onChange(of: config) {
-            PresetLibrary.setCurrent(config)
+        // Holding the microphone open keeps a Bluetooth headset in hands-free
+        // mode, so release it the moment the user looks elsewhere. The meter
+        // is only useful while it is being watched anyway.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didResignActiveNotification)) { _ in
+            micMonitor.stop()
         }
         .onChange(of: config.format) {
             // Keep fps valid when the option list switches with the format.
@@ -672,22 +901,7 @@ struct SettingsView: View {
 
     // MARK: - General & storage
 
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: { launchAtLogin },
-            set: { enabled in
-                do {
-                    if enabled {
-                        try SMAppService.mainApp.register()
-                    } else {
-                        try SMAppService.mainApp.unregister()
-                    }
-                    launchAtLogin = enabled
-                } catch {
-                    launchAtLogin = SMAppService.mainApp.status == .enabled
-                }
-            })
-    }
+    // Registering the login item happens in apply(), not on toggle.
 
     private func refreshNotificationStatus() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
@@ -746,9 +960,10 @@ struct SettingsView: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            // Persists path + security-scoped bookmark (the sandbox forgets
-            // the NSOpenPanel grant at quit; the bookmark survives).
-            RecordingStore.rememberCustomFolder(url)
+            // Held until Apply, which creates the security-scoped bookmark
+            // (the sandbox forgets the NSOpenPanel grant at quit). Cancelling
+            // therefore grants nothing.
+            pendingCustomFolder = url
             customStoragePath = url.path
         }
     }
@@ -762,25 +977,24 @@ struct SettingsView: View {
         return "Custom Preset #\(n)"
     }
 
+    // Preset edits stay in the draft like everything else — Apply persists
+    // them, Cancel and Revert discard them.
     private func savePreset() {
         let trimmed = presetName.trimmingCharacters(in: .whitespaces)
         if let existing = existingCustomPreset,
            let index = customPresets.firstIndex(where: { $0.id == existing.id }) {
             customPresets[index].config = config
-            PresetLibrary.persistCustom(customPresets)
             selection = existing.id
         } else {
             let preset = RecordingPresetDef(id: "custom.\(UUID().uuidString)",
                                             name: trimmed, config: config)
             customPresets.append(preset)
-            PresetLibrary.persistCustom(customPresets)
             selection = preset.id
         }
     }
 
     private func deletePreset(_ preset: RecordingPresetDef) {
         customPresets.removeAll { $0.id == preset.id }
-        PresetLibrary.persistCustom(customPresets)
         // Keep the values on screen as an unsaved custom baseline.
         selection = "custom"
         presetName = uniquePresetName()
