@@ -5,7 +5,7 @@ mechanical. **Nothing here has been submitted.** The two irreversible steps —
 uploading a build and pressing *Submit for Review* — are deliberately left to
 a human, after hand-QA.
 
-Bundle id `app.screc` · SKU `screc-1` · category **Video** · price **tier 1**
+Bundle id `app.screc` · SKU `screc` · category **Video** · price **tier 1**
 (one-time, never a subscription) · no in-app purchases · no account required.
 
 ---
@@ -19,14 +19,23 @@ Bundle id `app.screc` · SKU `screc-1` · category **Video** · price **tier 1**
 | Version / build number in the bundle | ✅ 1.0.0 · UTC timestamp |
 | Category, export-compliance, copyright, usage strings | ✅ in the built plist |
 | `xcodebuild archive -configuration AppStore` | ✅ succeeds |
-| `xcodebuild -exportArchive` (signs the .pkg) | ⛔ needs the app record — see §7 |
+| `xcodebuild -exportArchive` (signs the .pkg) | ✅ verified 2026-08-09 |
 | App Store Connect record, screenshots, listing | ⛔ human (copy ready below) |
 | TestFlight pass, Tahoe pass | ⛔ human |
 | Upload + Submit for Review | ⛔ deliberately not done |
 
-The export step blocks because distribution signing needs a **Mac App Store
-provisioning profile**, which cannot exist until the App ID / app record does.
-Creating the record unblocks it.
+The whole build pipeline is verified end to end. With the app record in place,
+`-allowProvisioningUpdates` created the *Mac Team Store Provisioning Profile:
+app.screc* automatically, and the export produced a signed installer:
+
+- `screc.pkg` signed by **3rd Party Mac Developer Installer**
+- the app inside it re-signed by **Apple Distribution** (the archive itself is
+  signed for development — the export step is what re-signs for distribution)
+- hardened runtime on, all four sandbox entitlements present
+- 1.0.0 · build `202608091147` · category Video · export-compliance exempt
+
+Only the upload and the review submission remain, and both are deliberately
+manual.
 
 ---
 
@@ -194,7 +203,11 @@ target pixel size.
 - [ ] Hand-QA every feature (the reason this submission is on hold)
 - [ ] macOS 26 (Tahoe) pass: menu-bar rendering of the ● REC badge, the
       System Settings deep links, the permission flow
-- [ ] Create the app record in App Store Connect (bundle id `app.screc`)
+- [ ] Create the app record in App Store Connect: platform macOS, name
+      `screc`, primary language English (U.S.), bundle id `app.screc`,
+      SKU `screc`. The SKU is internal-only (it appears in sales reports,
+      never to customers) and can never be changed — so no version number
+      or date in it.
 - [ ] Fill in name, subtitle, description, keywords, URLs from §2
 - [ ] Privacy answers from §3; publish `screc.app/privacy`
 - [ ] Upload the five screenshots from §5
