@@ -20,3 +20,6 @@ release-review.md
 
 # Local App Store dress-rehearsal build products.
 build-mas/
+
+# Screenshot working directory (App Store assets are uploaded, not committed).
+docs/appstore-screenshots/

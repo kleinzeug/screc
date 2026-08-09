@@ -174,27 +174,45 @@ most common source of "we could not locate the app's interface" rejections.
 
 ## 5. Screenshots
 
-Required: at least one, at **2880 × 1800** (16:10). Also accepted:
-2560 × 1600, 1440 × 900, 1280 × 800. Because screc has no main window, each
-shot should carry a caption baked into the image.
+Required: at least one, at **2880 × 1800** (16:10); 2560 × 1600, 1440 × 900 and
+1280 × 800 are also accepted. Note every accepted size is 16:10 while most Macs
+are 16:9, so a full-screen grab is the wrong shape.
+
+**`tools/screenshot.sh <name> [delay] [anchor]`** handles that: it captures the
+Retina display and crops 2880 × 1800 of native pixels — no scaling, no
+letterboxing — then flattens any alpha (App Store artwork must be opaque). The
+delay leaves time to open a menu or start a recording; menus stay open while it
+counts down. Anchors: `topright` (default, where the menu-bar item is),
+`topleft`, `top`, `center`. Output lands in `docs/appstore-screenshots/`.
+
+The terminal running it needs Screen Recording permission.
 
 Planned set (5):
 
-1. **The menu open** — the four capture modes with their hotkeys, over a
-   recognizable desktop. Caption: "Four ways to record. One click each."
-2. **Recording in progress** — the passe-partout dimming everything outside
-   the captured window, live stats visible in the menu bar. Caption:
-   "See exactly what you're capturing."
-3. **Region picker** — handles and the size readout mid-drag. Caption:
-   "Drag a region. Nudge it until it's right."
-4. **Settings → Screen Recording / Format** — the preset picker expanded.
-   Caption: "Presets, or full control."
-5. **Input visualization** — click ring plus keyboard HUD and a ⌘⇧4 chip.
-   Caption: "Show clicks and keys for tutorials."
+| # | Shot | Recipe |
+|---|---|---|
+| 1 | **The menu open** — four capture modes with hotkeys, checkmark on the default | `screenshot.sh menu 6 topright`, then left-click the ● REC and wait |
+| 2 | **Recording in progress** — passe-partout dimming everything outside the captured window, live stats in the menu bar | start a Focused Window recording of something recognizable, then `screenshot.sh recording 6 topright` |
+| 3 | **Region picker mid-drag** — handles, size readout, floating REC pill | begin Screen Region, drag a rect, `screenshot.sh region 8 top` |
+| 4 | **Settings** — preset picker with Format expanded (set the preset to Custom first) | `screenshot.sh settings 6 center` |
+| 5 | **Input visualization** — click ring, keyboard HUD, ⌘⇧4 chips | **not a screen capture** — see below |
 
-Produce them on a clean desktop (no personal data, no other apps' content
-that could read as third-party branding), then verify each is exactly the
-target pixel size.
+Shot 5 needs a still lifted **out of a recording**: the decorations are
+composited into the video and deliberately never appear on screen, so a
+screenshot of the desktop cannot show them. Record full screen with clicks,
+scroll and keys enabled at a native-resolution preset, then extract a frame and
+crop it to 2880 × 1800.
+
+Captions are optional — Apple provides no caption field for macOS, so any text
+has to be baked into the image. Worth considering here precisely because the app
+has no main window to speak for itself. Suggested lines: "Four ways to record.
+One click each." · "See exactly what you're capturing." · "Drag a region. Nudge
+it until it's right." · "Presets, or full control." · "Show clicks and keys for
+tutorials."
+
+Shoot on a clean desktop: no personal data, no other apps' content that could
+read as third-party branding, and check the ● REC item is actually in frame —
+it is the subject of shots 1 and 2.
 
 ---
 
