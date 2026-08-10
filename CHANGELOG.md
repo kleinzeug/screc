@@ -59,7 +59,8 @@ First public release.
   ⇧ to lock the aspect ratio, ⌥ to resize around the centre, live
   coordinates, and a click to start from the whole screen.
 - **Recent recordings** in the menu: click to open in QuickTime or Preview,
-  ⌘-click to reveal in Finder, ⌥-click to convert to GIF or edit its frames.
+  ⌥-click to delete, ⌘-click to reveal in Finder, ⇧-click to convert to GIF
+  or edit its frames.
   Recordings beyond the list stay reachable in an **Older Recordings**
   submenu; Clear All reports the disk space it frees, asks first on
   permanent storage locations, and moves files to the Trash there instead

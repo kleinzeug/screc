@@ -183,6 +183,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return image
         }()
 
+        /// Trash glyph for the ⌥ Delete row. An SF Symbol as a TEMPLATE image
+        /// rather than the Unicode wastebasket (U+1F5D1): that codepoint
+        /// renders as a fixed multicolor emoji, while a template image is a
+        /// flat silhouette AppKit tints with the menu's label color — so it
+        /// follows light and dark mode automatically.
+        static let trash: NSImage? = {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            guard let image = NSImage(systemSymbolName: "trash",
+                                      accessibilityDescription: "Delete")?
+                .withSymbolConfiguration(config)
+            else { return nil }
+            image.isTemplate = true
+            return image
+        }()
+
         static let selecting: NSImage = {
             let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
             let image = NSImage(systemSymbolName: "viewfinder",
@@ -381,10 +396,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// plus the Finder escape hatch.
     private static let olderMenuLimit = 25
 
-    /// The three menu rows every listed recording gets: open (⌘ variant
-    /// reveals), an ⌥ alternate (Convert to GIF / Edit Frames), and a ⌘
-    /// alternate (Reveal in Finder). The rows share an empty key equivalent,
-    /// so AppKit pairs the alternates by modifier mask.
+    /// The four menu rows every listed recording gets: open, plus alternates
+    /// for ⌥ (Delete), ⌘ (Reveal in Finder) and ⇧ (Convert to GIF / Edit
+    /// Frames). The rows share an empty key equivalent, so AppKit pairs the
+    /// alternates by modifier mask.
     private func addRecordingRows(url: URL, bytes: Int64, to menu: NSMenu) {
         let name = url.lastPathComponent
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
@@ -393,22 +408,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         entry.keyEquivalentModifierMask = []
         menu.addItem(entry)
 
-        let isGIF = url.pathExtension.lowercased() == "gif"
-        let alternate = isGIF
-            ? item("Edit Frames  ·  \(name)", action: #selector(editRecording(_:)))
-            : item("Convert to GIF  ·  \(name)", action: #selector(convertRecording(_:)))
-        alternate.representedObject = url
-        alternate.isAlternate = true
-        alternate.keyEquivalentModifierMask = [.option]
-        if !isGIF { alternate.isEnabled = state.phase == .idle }
-        menu.addItem(alternate)
+        // ⌥ deletes. The trash glyph marks it out as the destructive row at a
+        // glance; permanent storage locations move the file to the Trash
+        // rather than erasing it (RecordingStore.delete).
+        let delete = item("Delete  ·  \(name)", action: #selector(deleteRecording(_:)))
+        delete.representedObject = url
+        delete.isAlternate = true
+        delete.keyEquivalentModifierMask = [.option]
+        delete.image = Icons.trash
+        menu.addItem(delete)
 
+        // ⌘ reveals instead of opening.
         let reveal = item("Reveal in Finder  ·  \(name)",
                           action: #selector(revealRecording(_:)))
         reveal.representedObject = url
         reveal.isAlternate = true
         reveal.keyEquivalentModifierMask = [.command]
         menu.addItem(reveal)
+
+        // ⇧ carries the GIF actions, which moved off ⌥ to make room for Delete.
+        let isGIF = url.pathExtension.lowercased() == "gif"
+        let convert = isGIF
+            ? item("Edit Frames  ·  \(name)", action: #selector(editRecording(_:)))
+            : item("Convert to GIF  ·  \(name)", action: #selector(convertRecording(_:)))
+        convert.representedObject = url
+        convert.isAlternate = true
+        convert.keyEquivalentModifierMask = [.shift]
+        if !isGIF { convert.isEnabled = state.phase == .idle }
+        menu.addItem(convert)
     }
 
     /// One entry per mode — never more. Normally each opens its picker;
@@ -584,6 +611,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func revealRecording(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// No confirmation: on permanent storage the file goes to the Trash and is
+    /// recoverable, and /tmp recordings are disposable by design. Clear All
+    /// still confirms, because that one is not reversible per-file.
+    @objc private func deleteRecording(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        store.delete(url)
     }
 
     @objc private func editRecording(_ sender: NSMenuItem) {

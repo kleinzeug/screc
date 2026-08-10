@@ -266,6 +266,21 @@ final class RecordingStore {
         remove(olderRecordings().map(\.url), toTrash: toTrash)
     }
 
+    /// Deletes a single recording, whether it is in the recents list or among
+    /// the older files. Same policy as Clear All: permanent storage goes
+    /// through the Trash so a mis-click stays recoverable, /tmp is erased
+    /// outright since those files are throwaway by design.
+    func delete(_ url: URL) {
+        remove([url], toTrash: Prefs.storageChoice != "tmp")
+        let resolved = Self.resolvedPath(url.path)
+        if let index = recordings.firstIndex(where: {
+            Self.resolvedPath($0.path) == resolved
+        }) {
+            recordings.remove(at: index)
+            persist()
+        }
+    }
+
     private func remove(_ urls: [URL], toTrash: Bool) {
         for url in urls {
             do {
