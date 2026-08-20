@@ -111,9 +111,20 @@ cp Config/local.xcconfig.example Config/local.xcconfig
 
 Worth doing if you iterate: macOS ties the screen-recording permission to
 the **code-signing identity**, so ad-hoc builds — which get a fresh identity
-every rebuild — are re-prompted for permission each time, and Sequoia is
-unreliable about granting ScreenCaptureKit access to them at all. A stable
-signing identity keeps the grant.
+every rebuild — are re-prompted for permission each time, and recent macOS
+versions are unreliable about granting ScreenCaptureKit access to them at all.
+A stable signing identity keeps the grant.
+
+Note that `local.xcconfig` is not sufficient on its own. It only names the
+team; automatic signing then needs a development certificate **with its
+private key** in that machine's keychain, and certificates never travel with
+the file. On a new machine, sign in under Xcode → Settings → Accounts (then
+*Manage Certificates… → + → Apple Development* if it does not happen by
+itself) and build with `-allowProvisioningUpdates`. Otherwise you get:
+
+```
+No signing certificate "Mac Development" found: … matching team ID … was found.
+```
 
 (No account information is committed to this repository; releases are signed
 locally — see [docs/RELEASING.md](docs/RELEASING.md).)
