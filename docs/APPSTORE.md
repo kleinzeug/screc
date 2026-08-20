@@ -12,30 +12,52 @@ Bundle id `app.screc` · SKU `screc` · category **Video** · price **tier 1**
 
 ## 1. Where the pipeline stands
 
-| Step | State |
+Build pipeline verified end to end; build `202608091147` uploaded, processed
+`VALID`, and attached to version 1.0.
+
+| Listing item | State |
 |---|---|
-| `AppStore` build configuration, sandbox entitlements | ✅ verified |
-| Sandbox-aware storage (container tmp + boot purge) | ✅ verified in both flavors |
-| Version / build number in the bundle | ✅ 1.0.0 · UTC timestamp |
-| Category, export-compliance, copyright, usage strings | ✅ in the built plist |
-| `xcodebuild archive -configuration AppStore` | ✅ succeeds |
-| `xcodebuild -exportArchive` (signs the .pkg) | ✅ verified 2026-08-09 |
-| App Store Connect record, screenshots, listing | ⛔ human (copy ready below) |
-| TestFlight pass, Tahoe pass | ⛔ human |
-| Upload + Submit for Review | ⛔ deliberately not done |
+| Name, subtitle | ✅ `screc` · `Menu-bar screen recorder` |
+| Description, keywords, promotional text | ✅ set via API |
+| Support & marketing URL | ✅ `https://screc.app` |
+| Privacy policy URL | ✅ `https://screc.app/privacy/` (page published) |
+| Screenshots | ✅ 3 × 2560×1600 APP_DESKTOP, all `COMPLETE` |
+| Build attached | ✅ 202608091147 |
+| Age rating | ✅ 4+ (27 of 29 declarations answered; the two nulls are Kids-Category-only and an optional URL) |
+| Pricing | ✅ set |
+| App Review contact + notes | ⛔ needs a phone number in `+<country><number>` form |
+| Privacy answers (nutrition labels) | ⛔ not exposed by the API — a short form in the UI |
+| Submit for Review | ⛔ deliberately human |
 
-The whole build pipeline is verified end to end. With the app record in place,
-`-allowProvisioningUpdates` created the *Mac Team Store Provisioning Profile:
-app.screc* automatically, and the export produced a signed installer:
+**What the API can and cannot do.** Everything above marked ✅ was set through
+the App Store Connect API (`tools/`-adjacent scripts under the job scratch
+dir). Two things it will not do:
 
-- `screc.pkg` signed by **3rd Party Mac Developer Installer**
-- the app inside it re-signed by **Apple Distribution** (the archive itself is
-  signed for development — the export step is what re-signs for distribution)
-- hardened runtime on, all four sandbox entitlements present
-- 1.0.0 · build `202608091147` · category Video · export-compliance exempt
+- **Privacy nutrition labels.** `appDataUsages`, `appDataUsageCategories` and
+  `apps/{id}/dataUsages` all return "The URL path is not valid" on the current
+  API version. Answer *Data Not Collected* in the UI — truthfully, per §3.
+- **App Review details** need `contactPhone`, and the API rejects an empty or
+  non-international value ("Preface the phone number with '+' followed by the
+  country code"). Everything else for that resource is ready; §4 holds the
+  notes text.
 
-Only the upload and the review submission remain, and both are deliberately
-manual.
+**Two mismatches to decide on:**
+
+- **Category.** App Store Connect says `UTILITIES`; the app bundle declares
+  `LSApplicationCategoryType = public.app-category.video`, which was the
+  decision. Worth making them agree — Video is the stronger placement for a
+  screen recorder, and a bundle/listing mismatch is the kind of thing review
+  queries.
+- **Copyright.** The listing reads `2026 Philipp Holzschneider / Kleinzeug`
+  (matching LICENSE) while the bundle reads `© 2026 Philipp Holzschneider`.
+  Aligning the bundle needs a new build, so the natural moment is the next one.
+
+**Blocked locally:** a fresh build carrying the redrawn small icons cannot be
+exported from this machine — the `3rd Party Mac Developer Installer`
+certificate is no longer in the keychain and `xcodebuild -exportArchive`
+reports "No Accounts". Signing in again under Xcode → Settings → Accounts
+restores both. Until then 1.0.0 ships the icons from the 9 August build; the
+new small icons would land in the next release.
 
 ---
 
