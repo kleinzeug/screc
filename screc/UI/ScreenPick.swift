@@ -74,7 +74,6 @@ private final class ScreenPickWindow: NSWindow {
         hasShadow = false
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        sharingType = .none
         isReleasedWhenClosed = false
         acceptsMouseMovedEvents = true
         contentView = pickView

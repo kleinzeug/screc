@@ -6,8 +6,8 @@ import SwiftUI
 /// corners, move; ⌥ mirror, ⇧ aspect lock) before confirming via the
 /// floating REC panel or Enter. Esc cancels; a drag outside the selection
 /// starts a new one. The overlay intercepts all clicks until REC — only the
-/// recording passe-partout that follows is click-through. Every window here
-/// sets `sharingType = .none` so none of it can appear in a recording.
+/// recording passe-partout that follows is click-through. None of it appears
+/// in a recording: the capture filter excludes screc's own application.
 ///
 /// The committed rect is display-local, top-left origin, in points — exactly
 /// what `SCStreamConfiguration.sourceRect` expects (AppKit rects are
@@ -159,7 +159,6 @@ private final class SelectionWindow: NSWindow {
         hasShadow = false
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        sharingType = .none
         isReleasedWhenClosed = false
         contentView = selectionView
         makeFirstResponder(selectionView)

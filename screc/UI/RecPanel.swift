@@ -28,7 +28,6 @@ enum RecPanel {
         panel.becomesKeyOnlyIfNeeded = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.sharingType = .none
         panel.isReleasedWhenClosed = false
         return panel
     }

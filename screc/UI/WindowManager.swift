@@ -103,8 +103,11 @@ final class WindowManager: NSObject, NSWindowDelegate {
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.delegate = self
-        // No screc window may ever appear in a recording.
-        window.sharingType = .none
+        // Deliberately left capturable. screc's own recordings exclude this
+        // app through the capture filter, so these windows never show up in
+        // them; sharingType = .none would additionally hide the window from
+        // Screen Sharing, screenshots and every other recorder — which broke
+        // remote access and made the App Store screenshots impossible to take.
         window.center()
         return window
     }

@@ -67,7 +67,6 @@ private final class CountdownWindow: NSWindow {
         ignoresMouseEvents = true
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        sharingType = .none
         isReleasedWhenClosed = false
         contentView = countdownView
     }

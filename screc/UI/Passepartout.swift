@@ -2,8 +2,8 @@ import AppKit
 
 /// Always-on-top, click-through "passe-partout": strongly dims every display
 /// with a punched-out hole over what is being recorded. Purely visual — the
-/// windows ignore all mouse events and can never appear in a recording
-/// (`sharingType = .none`, and the capture filter excludes the app anyway).
+/// windows ignore all mouse events and never appear in a recording, because
+/// the capture filter excludes screc's own application.
 @MainActor
 final class PassepartoutController {
     private var windows: [PassepartoutWindow] = []
@@ -56,7 +56,6 @@ private final class PassepartoutWindow: NSWindow {
         ignoresMouseEvents = true // indicator only — everything clicks through
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        sharingType = .none
         isReleasedWhenClosed = false
         contentView = passepartoutView
     }
