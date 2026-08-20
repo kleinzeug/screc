@@ -45,57 +45,58 @@ manual.
 **Subtitle (30 char max):** `Menu-bar screen recorder` (24)
 
 **Promotional text (170 max):**
-> One click in the menu bar, and a small, share-ready MP4 or GIF already
-> exists when you stop. No export step, no ffmpeg, no subscription.
+> Record from the menu bar. The share-ready MP4 or GIF exists the moment you
+> stop — nothing to export, nothing to convert, nothing to subscribe to.
 
-**Description:**
+(145 characters. This is the only listing copy that can change without a new
+build, so treat it as a rotating slot.)
+
+**Description** (2405 of 4000 characters):
 
 ```
-screc records your screen from the menu bar and hands you a file you can
-send immediately. No export dialog, no command-line incantation, no
-subscription.
+screc records your screen from the menu bar and hands you a file you can send immediately. No export dialog, no ffmpeg incantation, no subscription.
 
-Right-click the red dot to start, click to stop — the compressed file is
-already on disk. Recording is encoded live in H.264 or HEVC at the bitrate
-you choose, so stopping is instant.
+Right-click the red dot to start, click it to stop — the compressed file already exists. Recording is encoded live in H.264 or HEVC at the bitrate you choose, so stopping is instant no matter how long you recorded.
 
 FOUR WAYS TO RECORD
 • Focused window — follows focus as you switch windows
-• Selected window — one pinned window, or a region inside it. It survives
-  the window closing and reopening: recording pauses, then resumes as a
-  clean cut rather than frozen video.
-• Screen region — drag it out, then nudge edges and corners. Hold Shift to
-  lock the aspect ratio, Option to resize around the centre.
+• Selected window — one pinned window, or just a region inside it. It survives the window closing and reopening: recording pauses, then resumes as a clean cut instead of frozen video.
+• Screen region — drag it out, then nudge the edges and corners. Shift locks the aspect ratio, Option resizes around the centre.
 • Full screen — per display
 
 WHILE YOU RECORD
-• Live statistics in the menu bar: duration, size, frame rate, dropped frames
-• A dimmed passe-partout shows exactly what is being captured, and follows
-  the window
-• Pause and resume with a modifier-click; pauses become clean cuts
-• Optional countdown before recording starts
-• Optionally visualize input: magnified cursor, click rings, scroll wheel,
-  keystrokes on a stylized keyboard, and shortcut chips
+• Live statistics in the menu bar: duration, file size, frame rate, dropped frames
+• A dimmed passe-partout shows exactly what is being captured, and follows the window as it moves
+• Pause and resume with a modifier-click — a pause becomes a clean cut, not a frozen stretch
+• An optional countdown before capture starts
 
 SOUND
-• System audio, the microphone, or both — mixed into one track on stop
-• Choose the input device and its level, with a live input meter
+• System audio, a microphone, or both — mixed into a single track when you stop
+• Pick the input device and its level, with a live input meter while you set it up
+
+SHOW THE INTERACTION
+• Draw a magnified cursor, click rings and a scroll indicator into the recording — they appear in the video and never on your own screen, so tutorials show what you did without cluttering your desktop
 
 OUTPUT
-• Presets from Tiny MP4 to Master HEVC, plus GIF — all fully editable:
-  format, resolution cap, frame rate, bitrate, keyframe interval, H.264
-  profile, CABAC, B-frames, audio bitrate and channels. Save your own.
-• GIF conversion on stop or afterwards, with a built-in frame editor for
-  dropping individual frames
-• Global hotkeys for every mode, all rebindable
+• Presets from Tiny MP4 to Master HEVC, plus GIF — every one fully editable: format, resolution cap, frame rate, bitrate, keyframe interval, H.264 profile, CABAC, B-frames, audio bitrate and channels. Save your own.
+• GIF conversion on stop, or from any earlier recording, with a built-in frame editor for dropping individual frames — something Preview cannot do
+• Global hotkeys for every capture mode, all rebindable
+• Recent recordings in the menu: open, delete, reveal in Finder, or convert them
 
-Recordings default to temporary storage and clean themselves up after a
-restart, or pick a folder to keep them in.
+Recordings go to temporary storage by default and clean themselves up after a restart, or choose a folder to keep them in.
 
-Native Swift throughout — ScreenCaptureKit and AVFoundation. No bundled
-ffmpeg, no Electron, no telemetry, no network access. screc is open source;
-building it yourself is free and always will be.
+Native Swift throughout — ScreenCaptureKit and AVFoundation. No bundled ffmpeg, no Electron, no telemetry, and no network access of any kind.
+
+screc is open source. Building it yourself is free and always will be; this purchase exists for people who would rather not.
 ```
+
+NOTE: the description deliberately does NOT mention keystroke or shortcut
+visualization. Those need Input Monitoring, and whether a sandboxed App Store
+build can obtain it is still unverified — advertising it would be a false claim
+if it cannot. Once TestFlight settles it, add:
+
+    • Show the keys and shortcuts you press on a translucent on-screen
+      keyboard, drawn into the video
 
 **Keywords (100 char max, comma-separated, no spaces):**
 ```
