@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — screc</title>
+<meta name="description" content="screc collects nothing, transmits nothing, and makes no network requests. Recordings stay on your Mac, where you put them.">
+<link rel="canonical" href="https://screc.app/privacy">
+<meta name="robots" content="index,follow">
+<style>
+  :root {
+    --rec: #e23b2e; --accent: #2f6bef;
+    --surface: #fbfcfe; --text: #1c222c; --muted: #56657a; --line: #c6d3e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --surface: #14171d; --text: #e7ecf3; --muted: #9aa7b8; --line: #2b323d; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--surface); color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 6vh 5vw 12vh;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  a { color: var(--accent); }
+  .brand {
+    display: inline-flex; align-items: baseline; gap: .45rem;
+    font-size: 1.5rem; font-weight: 800; letter-spacing: -.01em;
+    text-decoration: none; color: var(--text); margin-bottom: 2.4rem;
+  }
+  .brand .dot { color: var(--rec); font-size: 1.05rem; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 2.4rem; }
+  h2 { font-size: 1.05rem; margin: 2.2rem 0 .5rem; }
+  p, li { color: var(--text); }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  .lede {
+    border-left: 3px solid var(--rec); padding: .1rem 0 .1rem 1rem;
+    font-size: 1.1rem; margin: 0 0 2rem;
+  }
+  footer {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: .875rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <a class="brand" href="/"><span class="dot">●</span> screc</a>
+
+  <h1>Privacy</h1>
+  <p class="sub">Last updated 21 August 2026</p>
+
+  <p class="lede">screc collects no data about you, transmits nothing, and makes
+  no network requests at all. There is no analytics, no crash reporting, no
+  account, and no telemetry of any kind.</p>
+
+  <h2>What screc does with your recordings</h2>
+  <p>Recordings are written to the location you choose — a temporary folder that
+  clears itself by default, or any folder you point it at. They stay on your Mac.
+  screc never uploads them, never inspects their contents, and has no server to
+  send them to.</p>
+
+  <h2>Permissions, and why they are asked for</h2>
+  <ul>
+    <li><strong>Screen Recording</strong> — required by macOS before any app can
+    capture the screen. Used only while you are recording.</li>
+    <li><strong>Microphone</strong> — off by default. Requested only if you turn
+    on microphone capture, and used only while recording, to add your voice to
+    the recording.</li>
+    <li><strong>Input Monitoring</strong> — off by default. Requested only if you
+    turn on the keystroke visualization, which draws the keys you press into the
+    recording as a teaching aid. Keystrokes are drawn and then discarded: nothing
+    is stored, logged, or transmitted.</li>
+  </ul>
+  <p>Each of these is granted by you in System Settings and can be revoked there
+  at any time.</p>
+
+  <h2>Third parties</h2>
+  <p>None. screc bundles no analytics or advertising libraries, and shares data
+  with nobody, because it has no data to share.</p>
+
+  <h2>Links you can choose to open</h2>
+  <p>The app contains links to this site, to the source repository on GitHub, and
+  to a tip page. Nothing is contacted unless you click one, at which point your
+  browser visits that site under its own privacy policy.</p>
+
+  <h2>Purchases</h2>
+  <p>If you bought screc from the Mac App Store, Apple handled the transaction
+  and screc receives no payment or identity information from it. Apple's own
+  privacy policy governs that purchase.</p>
+
+  <h2>Children</h2>
+  <p>screc is suitable for all ages and collects nothing from anyone, regardless
+  of age.</p>
+
+  <h2>Changes</h2>
+  <p>Should this ever change — it is not planned — the revised policy will appear
+  on this page with a new date, and any release that begins collecting data would
+  say so in its release notes.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy, or anything else:
+  <a href="https://github.com/kleinzeug/screc/issues">github.com/kleinzeug/screc/issues</a>.</p>
+
+  <footer>
+    © 2026 Philipp Holzschneider · a Kleinzeug tool ·
+    <a href="/">screc.app</a> ·
+    <a href="https://github.com/kleinzeug/screc">source</a>
+  </footer>
+</main>
+</body>
+</html>
