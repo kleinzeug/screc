@@ -178,12 +178,18 @@ Required: at least one, at **2880 × 1800** (16:10); 2560 × 1600, 1440 × 900 a
 1280 × 800 are also accepted. Note every accepted size is 16:10 while most Macs
 are 16:9, so a full-screen grab is the wrong shape.
 
-**`tools/screenshot.sh <name> [delay] [anchor]`** handles that: it captures the
-Retina display and crops 2880 × 1800 of native pixels — no scaling, no
-letterboxing — then flattens any alpha (App Store artwork must be opaque). The
-delay leaves time to open a menu or start a recording; menus stay open while it
-counts down. Anchors: `topright` (default, where the menu-bar item is),
-`topleft`, `top`, `center`. Output lands in `docs/appstore-screenshots/`.
+**`tools/screenshot.sh <name> [delay] [anchor] [display] [size]`** handles that:
+it captures the display and crops native pixels to an accepted size — no
+scaling, no letterboxing — then flattens any alpha (App Store artwork must be
+opaque). The delay leaves time to open a menu or start a recording; menus stay
+open while it counts down. Anchors: `topright` (default, where the menu-bar item
+is), `topleft`, `top`, `center`. Size defaults to `auto`, the largest accepted
+size the display can supply — it prints which one it chose, and **every shot in
+a set must use the same size**, so pass it explicitly after the first. Output
+lands in `docs/appstore-screenshots/`.
+
+**`tools/frame.sh <movie> [seconds] [anchor] [size]`** does the same job for
+shot 5, lifting a still out of a recording.
 
 The terminal running it needs Screen Recording permission.
 
@@ -200,8 +206,11 @@ Planned set (5):
 Shot 5 needs a still lifted **out of a recording**: the decorations are
 composited into the video and deliberately never appear on screen, so a
 screenshot of the desktop cannot show them. Record full screen with clicks,
-scroll and keys enabled at a native-resolution preset, then extract a frame and
-crop it to 2880 × 1800.
+scroll and keys enabled at a native-resolution preset (Master HEVC), then:
+
+```sh
+tools/frame.sh /tmp/screc/<recording>.mp4 3 center
+```
 
 Captions are optional — Apple provides no caption field for macOS, so any text
 has to be baked into the image. Worth considering here precisely because the app
