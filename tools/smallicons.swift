@@ -13,52 +13,88 @@ import AppKit
     static func badge(px: Int, withText: Bool) -> NSImage {
         let side = CGFloat(px)
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
-            let rect = NSRect(x: 0, y: 0, width: side, height: side)
-            // Translucent dark rounded rect, inset slightly so the corners
-            // read as a rounded square rather than filling the whole tile.
-            let inset = max(0.5, side * 0.03)
-            let body = rect.insetBy(dx: inset, dy: inset)
-            let radius = side * 0.225
-            let plate = NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
-            NSColor(calibratedWhite: 0.11, alpha: 0.88).setFill()
-            plate.fill()
-            // A hairline lifts it off dark desktops.
-            NSColor(calibratedWhite: 1, alpha: 0.16).setStroke()
-            plate.lineWidth = max(0.5, side * 0.02)
-            plate.stroke()
-
             // #FF453A — sampled from the full icon, which is macOS systemRed.
             let red = NSColor(srgbRed: 255/255.0, green: 69/255.0, blue: 58/255.0, alpha: 1)
-            if withText {
-                // Dot + REC, laid out as one group and centred.
-                let fontSize = side * 0.30
-                let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
-                let text = NSAttributedString(string: "REC", attributes: [
-                    .font: font,
-                    .foregroundColor: NSColor.white,
-                    .kern: -fontSize * 0.02,
-                ])
-                let textSize = text.size()
-                let dot = side * 0.20
-                let gap = side * 0.07
-                let total = dot + gap + textSize.width
-                let originX = (side - total) / 2
-                red.setFill()
-                NSBezierPath(ovalIn: NSRect(x: originX,
-                                            y: (side - dot) / 2,
-                                            width: dot, height: dot)).fill()
-                text.draw(at: NSPoint(x: originX + dot + gap,
-                                      y: (side - textSize.height) / 2))
-            } else {
-                // Just the dot, big enough to read as the record symbol.
+            // Equal padding on all four sides, so the plate hugs its contents.
+            let pad = side * 0.085
+            // …and a little air outside it, or the plate's hairline is clipped
+            // by the tile edge.
+            let outer = side * 0.04
+
+            func plate(_ rect: NSRect, radius: CGFloat) {
+                let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+                NSColor(calibratedWhite: 0.11, alpha: 0.88).setFill()
+                path.fill()
+                NSColor(calibratedWhite: 1, alpha: 0.16).setStroke()
+                path.lineWidth = max(0.5, side * 0.02)
+                path.stroke()
+            }
+
+            guard withText else {
+                // Dot alone: a square plate already has equal padding.
+                let body = rect(side).insetBy(dx: side * 0.03, dy: side * 0.03)
+                plate(body, radius: side * 0.225)
                 let dot = side * 0.46
                 red.setFill()
                 NSBezierPath(ovalIn: NSRect(x: (side - dot) / 2, y: (side - dot) / 2,
                                             width: dot, height: dot)).fill()
+                return true
+            }
+
+            // Lay out by the glyphs' INK bounds, not the font's advance width
+            // and line height: those include side bearings and the
+            // ascender/descender the word "REC" never uses, so padding
+            // computed from them comes out unequal — visibly so on the right.
+            let usable = side - pad * 2 - outer * 2
+            let dot = side * 0.22
+            let gap = side * 0.08
+            var fontSize = side * 0.34
+            var line: CTLine!
+            var ink = CGRect.zero
+            while true {
+                let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
+                let attributed = NSAttributedString(string: "REC", attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.white,
+                    .kern: -fontSize * 0.02,
+                ])
+                line = CTLineCreateWithAttributedString(attributed)
+                ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+                if dot + gap + ink.width <= usable || fontSize <= side * 0.16 { break }
+                fontSize -= side * 0.01
+            }
+
+            let contentWidth = dot + gap + ink.width
+            let contentHeight = max(dot, ink.height)
+            let plateRect = NSRect(x: (side - (contentWidth + pad * 2)) / 2,
+                                   y: (side - (contentHeight + pad * 2)) / 2,
+                                   width: contentWidth + pad * 2,
+                                   height: contentHeight + pad * 2)
+            plate(plateRect, radius: min(plateRect.height * 0.34, plateRect.width / 2))
+
+            red.setFill()
+            NSBezierPath(ovalIn: NSRect(x: plateRect.minX + pad,
+                                        y: plateRect.midY - dot / 2,
+                                        width: dot, height: dot)).fill()
+
+            // Place the ink rect exactly: shift by its own origin so the
+            // leftmost pixel of "R" lands on the intended x, and the ink's
+            // vertical centre lands on the plate's.
+            if let context = NSGraphicsContext.current?.cgContext {
+                context.saveGState()
+                context.textPosition = CGPoint(
+                    x: plateRect.minX + pad + dot + gap - ink.minX,
+                    y: plateRect.midY - ink.height / 2 - ink.minY)
+                CTLineDraw(line, context)
+                context.restoreGState()
             }
             return true
         }
         return image
+    }
+
+    private static func rect(_ side: CGFloat) -> NSRect {
+        NSRect(x: 0, y: 0, width: side, height: side)
     }
 
     static func write(_ image: NSImage, px: Int, to path: String) {
