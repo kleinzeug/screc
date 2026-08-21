@@ -54,12 +54,26 @@ dir). Two things it will not do:
   (matching LICENSE) while the bundle reads `© 2026 Philipp Holzschneider`.
   Aligning the bundle needs a new build, so the natural moment is the next one.
 
-**Blocked locally:** a fresh build carrying the redrawn small icons cannot be
-exported from this machine — the `3rd Party Mac Developer Installer`
-certificate is no longer in the keychain and `xcodebuild -exportArchive`
-reports "No Accounts". Signing in again under Xcode → Settings → Accounts
-restores both. Until then 1.0.0 ships the icons from the 9 August build; the
-new small icons would land in the next release.
+**Submitted 2026-08-21.** Version 1.0 is `WAITING_FOR_REVIEW` with build
+`202608211043` (the redrawn small icons), submission
+`ab8f8cc1-984a-46a0-a0f0-07aeb5c4e417`, release type `AFTER_APPROVAL` — it
+will not go live on its own; releasing is a separate click once approved.
+
+Two gates were cleared on the way, both worth remembering:
+
+- **The installer certificate never existed.** `xcodebuild -exportArchive`
+  needs `3rd Party Mac Developer Installer` to sign the `.pkg`, and the
+  portal had no `MAC_INSTALLER_DISTRIBUTION` certificate at all. It does not
+  require signing Xcode in: generate a key and CSR locally, POST the CSR to
+  `/v1/certificates`, and import the issued certificate. See
+  §7a below. Automatic signing then exported fine — the cached
+  `Mac Team Store Provisioning Profile: app.screc` was enough, so the earlier
+  "No Accounts" reading was a symptom of the missing certificate, not of a
+  missing account.
+- **`contentRightsDeclaration` was `null`**, which blocks submission and is
+  easy to miss because App Store Connect only surfaces it as a
+  yes/no question in App Information. Set to
+  `DOES_NOT_USE_THIRD_PARTY_CONTENT`.
 
 ---
 
@@ -309,6 +323,33 @@ App*, or:
 xcrun altool --upload-app -f dist/appstore/screc.pkg -t macos \
   --apple-id <apple-id> --password <app-specific-password>
 ```
+
+### 7a. Installer certificate, without Xcode
+
+Only needed if `security find-identity -v -p basic | grep Installer` comes up
+empty. The private key never leaves this machine — Apple only ever sees the
+CSR.
+
+```sh
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout installer.key -out installer.csr \
+  -subj "/emailAddress=<email>/CN=<name>/C=DE"
+
+# POST the CSR text as data.attributes.csrContent to
+#   https://api.appstoreconnect.apple.com/v1/certificates
+# with certificateType = MAC_INSTALLER_DISTRIBUTION, then base64-decode
+# data.attributes.certificateContent into installer.cer.
+
+openssl x509 -inform DER -in installer.cer -out installer.pem
+openssl pkcs12 -export -legacy -inkey installer.key -in installer.pem \
+  -name "3rd Party Mac Developer Installer" -out installer.p12 -passout "pass:$PW"
+security import installer.p12 -k ~/Library/Keychains/login.keychain-db \
+  -f pkcs12 -P "$PW" -A
+```
+
+`security import` rejects an empty passphrase, so pass a real one. The key
+backup lives outside the repo next to the API key, in
+`~/Documents/App Development/App Store Connect/`.
 
 `CURRENT_PROJECT_VERSION` must be higher than any previously uploaded build;
 the UTC timestamp guarantees that without bookkeeping. Bump
