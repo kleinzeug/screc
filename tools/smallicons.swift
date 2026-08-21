@@ -15,77 +15,85 @@ import AppKit
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
             // #FF453A — sampled from the full icon, which is macOS systemRed.
             let red = NSColor(srgbRed: 255/255.0, green: 69/255.0, blue: 58/255.0, alpha: 1)
-            // Equal padding on all four sides, so the plate hugs its contents.
-            let pad = side * 0.085
-            // …and a little air outside it, or the plate's hairline is clipped
-            // by the tile edge.
-            let outer = side * 0.04
+            let lineWidth = max(0.5, side * 0.02)
+            // Inset by HALF the stroke so the hairline's outer edge lands
+            // exactly on the canvas edge — any less and it is clipped, any
+            // more and width is wasted on transparency.
+            let half = lineWidth / 2
 
             func plate(_ rect: NSRect, radius: CGFloat) {
                 let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
                 NSColor(calibratedWhite: 0.11, alpha: 0.88).setFill()
                 path.fill()
                 NSColor(calibratedWhite: 1, alpha: 0.16).setStroke()
-                path.lineWidth = max(0.5, side * 0.02)
+                path.lineWidth = lineWidth
                 path.stroke()
             }
 
             guard withText else {
-                // Dot alone: a square plate already has equal padding.
-                let body = rect(side).insetBy(dx: side * 0.03, dy: side * 0.03)
+                // Dot alone, on a square plate filling the tile.
+                let body = NSRect(x: half, y: half,
+                                  width: side - lineWidth, height: side - lineWidth)
                 plate(body, radius: side * 0.225)
-                let dot = side * 0.46
+                let dot = side * 0.52
                 red.setFill()
                 NSBezierPath(ovalIn: NSRect(x: (side - dot) / 2, y: (side - dot) / 2,
                                             width: dot, height: dot)).fill()
                 return true
             }
 
-            // Lay out by the glyphs' INK bounds, not the font's advance width
-            // and line height: those include side bearings and the
-            // ascender/descender the word "REC" never uses, so padding
-            // computed from them comes out unequal — visibly so on the right.
-            let usable = side - pad * 2 - outer * 2
-            let dot = side * 0.22
+            // The plate spans the full canvas width; the badge is then grown
+            // until it fills that width, rather than sized to a fixed
+            // fraction and left floating in transparency.
+            let plateWidth = side - lineWidth
             let gap = side * 0.08
-            var fontSize = side * 0.34
-            var line: CTLine!
-            var ink = CGRect.zero
-            while true {
-                let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
+            let minPad = side * 0.06
+
+            // Largest type that still leaves at least minPad on each side.
+            // The dot is tied to the cap height so the pair stays in
+            // proportion as the type grows.
+            var best: (font: NSFont, ink: CGRect, dot: CGFloat, line: CTLine)?
+            var probe = side * 0.16
+            while probe < side * 0.60 {
+                let font = NSFont.systemFont(ofSize: probe, weight: .heavy)
                 let attributed = NSAttributedString(string: "REC", attributes: [
                     .font: font,
                     .foregroundColor: NSColor.white,
-                    .kern: -fontSize * 0.02,
+                    .kern: -probe * 0.02,
                 ])
-                line = CTLineCreateWithAttributedString(attributed)
-                ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
-                if dot + gap + ink.width <= usable || fontSize <= side * 0.16 { break }
-                fontSize -= side * 0.01
+                let line = CTLineCreateWithAttributedString(attributed)
+                let ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+                let dot = ink.height * 1.15
+                if dot + gap + ink.width <= plateWidth - minPad * 2 {
+                    best = (font, ink, dot, line)
+                } else {
+                    break
+                }
+                probe += max(0.25, side * 0.01)
             }
+            guard let fit = best else { return true }
 
-            let contentWidth = dot + gap + ink.width
-            let contentHeight = max(dot, ink.height)
-            let plateRect = NSRect(x: (side - (contentWidth + pad * 2)) / 2,
-                                   y: (side - (contentHeight + pad * 2)) / 2,
-                                   width: contentWidth + pad * 2,
-                                   height: contentHeight + pad * 2)
-            plate(plateRect, radius: min(plateRect.height * 0.34, plateRect.width / 2))
+            // Whatever width is left over becomes the padding — split evenly,
+            // then reused vertically so all four sides match exactly.
+            let contentWidth = fit.dot + gap + fit.ink.width
+            let pad = (plateWidth - contentWidth) / 2
+            let contentHeight = max(fit.dot, fit.ink.height)
+            let plateHeight = contentHeight + pad * 2
+
+            let plateRect = NSRect(x: half, y: (side - plateHeight) / 2,
+                                   width: plateWidth, height: plateHeight)
+            plate(plateRect, radius: min(plateHeight * 0.34, plateWidth / 2))
 
             red.setFill()
             NSBezierPath(ovalIn: NSRect(x: plateRect.minX + pad,
-                                        y: plateRect.midY - dot / 2,
-                                        width: dot, height: dot)).fill()
-
-            // Place the ink rect exactly: shift by its own origin so the
-            // leftmost pixel of "R" lands on the intended x, and the ink's
-            // vertical centre lands on the plate's.
+                                        y: plateRect.midY - fit.dot / 2,
+                                        width: fit.dot, height: fit.dot)).fill()
             if let context = NSGraphicsContext.current?.cgContext {
                 context.saveGState()
                 context.textPosition = CGPoint(
-                    x: plateRect.minX + pad + dot + gap - ink.minX,
-                    y: plateRect.midY - ink.height / 2 - ink.minY)
-                CTLineDraw(line, context)
+                    x: plateRect.minX + pad + fit.dot + gap - fit.ink.minX,
+                    y: plateRect.midY - fit.ink.height / 2 - fit.ink.minY)
+                CTLineDraw(fit.line, context)
                 context.restoreGState()
             }
             return true
