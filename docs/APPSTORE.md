@@ -25,7 +25,7 @@ Build pipeline verified end to end; build `202608091147` uploaded, processed
 | Build attached | ✅ 202608091147 |
 | Age rating | ✅ 4+ (27 of 29 declarations answered; the two nulls are Kids-Category-only and an optional URL) |
 | Pricing | ✅ set |
-| App Review contact + notes | ⛔ needs a phone number in `+<country><number>` form |
+| App Review contact + notes | ✅ set; demo account explicitly not required |
 | Privacy answers (nutrition labels) | ⛔ not exposed by the API — a short form in the UI |
 | Submit for Review | ⛔ deliberately human |
 
@@ -36,18 +36,20 @@ dir). Two things it will not do:
 - **Privacy nutrition labels.** `appDataUsages`, `appDataUsageCategories` and
   `apps/{id}/dataUsages` all return "The URL path is not valid" on the current
   API version. Answer *Data Not Collected* in the UI — truthfully, per §3.
-- **App Review details** need `contactPhone`, and the API rejects an empty or
-  non-international value ("Preface the phone number with '+' followed by the
-  country code"). Everything else for that resource is ready; §4 holds the
-  notes text.
+- **App Review details** need `contactPhone` in `+<country><number>` form; the
+  API rejects empty or local formats. Note the resource is created with
+  `demoAccountRequired: true` by DEFAULT — left alone, App Review would expect
+  login credentials that screc does not have. It is now explicitly false.
 
 **Two mismatches to decide on:**
 
-- **Category.** App Store Connect says `UTILITIES`; the app bundle declares
-  `LSApplicationCategoryType = public.app-category.video`, which was the
-  decision. Worth making them agree — Video is the stronger placement for a
-  screen recorder, and a bundle/listing mismatch is the kind of thing review
-  queries.
+- **Category.** App Store Connect says `UTILITIES`. The Mac storefront's
+  video category is `PHOTO_AND_VIDEO` (there is no plain "Video"), and the
+  bundle's `LSApplicationCategoryType = public.app-category.video` is a
+  Launch Services hint in a different namespace — so this is a positioning
+  choice, not an inconsistency to repair. Utilities suits a menu-bar tool;
+  Photo & Video is topically closer and more competitive. One API call either
+  way.
 - **Copyright.** The listing reads `2026 Philipp Holzschneider / Kleinzeug`
   (matching LICENSE) while the bundle reads `© 2026 Philipp Holzschneider`.
   Aligning the bundle needs a new build, so the natural moment is the next one.
