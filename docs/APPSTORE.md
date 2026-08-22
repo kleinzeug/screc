@@ -54,7 +54,28 @@ dir). Two things it will not do:
   (matching LICENSE) while the bundle reads `© 2026 Philipp Holzschneider`.
   Aligning the bundle needs a new build, so the natural moment is the next one.
 
-**Submitted 2026-08-21.** Version 1.0 is `WAITING_FOR_REVIEW` with build
+**Rejected 2026-08-22 — guideline 2.1, Information Needed.** Not a defect
+report: Apple asked for a demo screen recording plus six written answers
+(devices tested, what the app does and for whom, setup instructions, external
+services, regional differences, regulated-industry material). This is the
+predictable outcome for an `LSUIElement` app — the reviewer launches it and
+sees nothing, because there is no Dock icon and no window. §4's advice to
+attach a 30-second demo video was right and was skipped; don't skip it again.
+
+The answer is metadata only, no new build: App Review notes rewritten to
+answer all seven items in order (the field caps at **4000 characters** — the
+API rejects longer with `ENTITY_ERROR.ATTRIBUTE.INVALID.TOO_LONG`), a demo
+recording attached, and the same text pasted into Resolution Center. The shot
+list lives in `~/Desktop/screc-demo-shotlist.md`; the key beat is holding on
+the menu bar right after launch. Record with QuickTime, **not** with screc —
+screc excludes its own windows from its own captures, so its menu and
+Settings window would be missing from the result.
+
+Worth stating accurately in item 5: the app has one third-party dependency,
+the MIT-licensed `KeyboardShortcuts` 2.4.0 package, statically linked. It is
+invisible to `otool -L`, so "no third-party code" would have been wrong.
+
+**Submitted 2026-08-21.** Version 1.0 was `WAITING_FOR_REVIEW` with build
 `202608211043` (the redrawn small icons), submission
 `ab8f8cc1-984a-46a0-a0f0-07aeb5c4e417`, release type `AFTER_APPROVAL` — it
 will not go live on its own; releasing is a separate click once approved.
